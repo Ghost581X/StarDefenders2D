@@ -33,6 +33,8 @@ class sdShurgTurret extends sdEntity
 
 		sdShurgTurret.TURRET_GROUND = 0;
 		sdShurgTurret.TURRET_FLYING = 1;
+		
+		sdShurgTurret.fire_tracing_classes = [ 'sdCharacter', 'sdDrone', 'sdShurgConverter', 'sdShurgTurret', 'sdShurgExcavator' ];
 	
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
 	}
@@ -53,7 +55,7 @@ class sdShurgTurret extends sdEntity
 
 		this.type = params.type || 0;
 
-		this.hmax = 800;
+		this.hmax = 550;
 		this.hea = this.hmax;
 		this._regen_timeout = 0; // Regen timeout;
 		this._notify_players = 0;
@@ -109,13 +111,14 @@ class sdShurgTurret extends sdEntity
 			let that = this;
 			for ( var i = 0; i < 6; i++ )
 			{
+				let i_copy = i;
 				let an = Math.random() * Math.PI * 2;
 				let d = ( i === 0 ) ? 0 : Math.random() * 20;
 				let r = ( i === 0 ) ? 30 : ( 6 + Math.random() * 12 );
 
 				setTimeout( ()=>
 				{
-					if ( !that._is_being_removed || i === 0 )
+					if ( !that._is_being_removed || i_copy === 0 )
 					{
 						var a = Math.random() * 2 * Math.PI;
 						var s = Math.random() * 10;
@@ -145,6 +148,8 @@ class sdShurgTurret extends sdEntity
 			//this.remove();
 		}
 		
+		if ( this.hea < -this.hmax * 0.6 )
+		this.remove();
 	}
 	
 	get mass() { return 800; }
@@ -244,7 +249,7 @@ class sdShurgTurret extends sdEntity
 							this.side = ( dx > 0 ) ? 1 : -1;
 
 							let should_fire = true;
-							if ( !sdWorld.CheckLineOfSight( this.x, this.y - 16, this._target.x, this._target.y, this, null, ['sdCharacter', 'sdDrone', 'sdShurgConverter', 'sdShurgTurret', 'sdShurgExcavator' ] ) )
+							if ( !sdWorld.CheckLineOfSight( this.x, this.y - 16, this._target.x, this._target.y, this, null, sdShurgTurret.fire_tracing_classes ) )
 							{
 								if ( sdWorld.last_hit_entity && sdWorld.last_hit_entity._ai_team === this._ai_team )
 								should_fire = false;
@@ -274,7 +279,9 @@ class sdShurgTurret extends sdEntity
 
 								//sdSound.PlaySound({ name:'gun_shotgun', x:this.x, y:this.y, pitch:1.25 });
 								
-								sdSound.PlaySound({ name:'gun_needle', x:this.x, y:this.y, volume: 0.4, pitch: 2 });
+								//sdSound.PlaySound({ name:'gun_needle', x:this.x, y:this.y, volume: 0.4, pitch: 2 });
+								sdSound.PlaySound({ name:'shurg_turret_attack', x:this.x, y:this.y, volume: 1.3, pitch: 1 });
+								
 							}	
 						}
 						else

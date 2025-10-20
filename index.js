@@ -3,7 +3,7 @@
 
 let port0 = 3000;
 let CloudFlareSupport = false;
-let directory_to_save_player_count = null;
+let path_for_online_count_save = null;
 
 /*
 
@@ -114,6 +114,8 @@ if ( !isWin )
         	const sslconfig = JSON.parse( data );
         	ssl_cert_path = sslconfig.certpath;
         	ssl_key_path = sslconfig.keypath;
+			path_for_online_count_save = sslconfig.onlinepath || null;
+			CloudFlareSupport = !!sslconfig.cloudflare;
 	    }
 		catch (err)
 		{
@@ -121,19 +123,7 @@ if ( !isWin )
 	    } 
 	} 
 	else 
-	{
-		if ( fs.existsSync('/usr/') &&
-	         fs.existsSync('/usr/local/') &&
-	         fs.existsSync('/usr/local/directadmin/') &&
-	         fs.existsSync('/usr/local/directadmin/data/') &&
-	         fs.existsSync('/usr/local/directadmin/data/users/') &&
-	         fs.existsSync('/usr/local/directadmin/data/users/admin/') &&
-	         fs.existsSync('/usr/local/directadmin/data/users/admin/domains/') ) 
-	    {
-	        ssl_key_path = '/usr/local/directadmin/data/users/admin/domains/gevanni.com.key';
-	        ssl_cert_path = '/usr/local/directadmin/data/users/admin/domains/gevanni.com.cert';
-	    }
-	    else
+	{ 
 		if ( fs.existsSync('/var/') &&
 	         fs.existsSync('/var/cpanel/') &&
 	         fs.existsSync('/var/cpanel/ssl/') &&
@@ -146,7 +136,7 @@ if ( !isWin )
 	        port0 = 8443;
 	        CloudFlareSupport = true;
         	
-        	directory_to_save_player_count = '/home/plazmaburst2/public_html/pb2/sd2d_online.v';
+        	path_for_online_count_save = '/home/plazmaburst2/public_html/pb2/sd2d_online.v';
     	}
 		else
 		{
@@ -360,6 +350,7 @@ import sdLongRangeTeleport from './game/entities/sdLongRangeTeleport.js';
 import sdTask from './game/entities/sdTask.js';
 import sdPortal from './game/entities/sdPortal.js';
 import sdPlayerSpectator from './game/entities/sdPlayerSpectator.js';
+import sdStatusEffect from './game/entities/sdStatusEffect.js';
 
 import { createRequire } from 'module';
 const require = createRequire( import.meta.url );
@@ -784,211 +775,222 @@ globalThis.DisableFileCache = ()=>
 if ( sdWorld.server_config.store_game_files_in_ram )
 globalThis.UpdateFileCache();
 
-// Slower but less file stacking that could slow down game
+// Slower but less file stacking that could slow down the game
 let get_busy = false;
 let busy_tot = 0;
-app.get('/*', function cb( req, res, repeated=false )
 {
-	function Finalize()
+	let cb = ( req, res, repeated=false )=>
 	{
-		get_busy = false;
-	}
-	
-	if ( repeated !== true )
-	busy_tot++;
-
-	if ( get_busy )
-	{
-	
-		setTimeout( ()=>{ cb( req, res, true ); }, 2 + Math.random() * 10 );
+		const fullPath = req.url;
+		
+		if ( fullPath.indexOf( '..' ) !== -1 ) // Doesn't happen really
 		return;
-	}
-	
-	get_busy = true;
-	busy_tot--;
-	
-	if ( busy_tot > 20 )
-	console.log( 'Slowing down file download due to '+busy_tot+' files requested at the same time' );
-	
-	var path = __dirname + '/game' + req.url;
-	//var path = './game' + req.url;
-	
-	
-	if ( req.url.substring( 0, '/sd_hook'.length ) === '/sd_hook' )
-	{
-		let request = req.url.split( '?' )[ 1 ];
-		let request_parts = request.split( '{' );
 		
-		let _net_id = parseInt( request_parts[ 0 ] );
-		
-		let response = null;
-		
-		let ent = sdEntity.entities_by_net_id_cache_map.get( _net_id );
-		
-		if ( ent !== undefined )
-		if ( typeof ent.HandleHookReply !== 'undefined' )
+		function Finalize()
 		{
-			let json_obj = null;
-			try
-			{
-				json_obj = JSON.parse( '{' + decodeURI( request_parts.slice( 1 ).join( '{' ) ) ); // Won't accept non-JSON objects
-			}
-			catch ( e )
-			{
-				debugger;
-			}
-			
-			if ( json_obj )
-			response = ent.HandleHookReply( json_obj );
+			get_busy = false;
 		}
-		
-		if ( !response )
-		{
-			response = { no_response: 1 };
-		}
-		
-		res.send( JSON.stringify( response ) );
-		Finalize();
-		return;
-	}
-	else
-	if ( req.url === '/get_classes.txt' )
-	//if ( req.url === '/get_entity_classes.txt' )
-	{
-		res.send( get_classes_page );
-		Finalize();
-		return;
-	}
-	else
-	if ( file_cache )
-	{
-		let url = 'game' + req.url;
-		
-		if ( url.length > 0 )
-		if ( url.charAt( url.length - 1 ) === '/' )
-		url += 'index.html';
 
-		// Mespeak's path issue
-		url = url.split( '//' ).join( '/' );
-		
-		let obj = file_cache.get( url );
-		
-		//trace( 'RECV', url );
-		
-		if ( obj )
+		if ( repeated !== true )
+		busy_tot++;
+
+		if ( get_busy )
 		{
-			res.writeHead(200, {'Content-Type': obj.type, 'Content-Length':obj.length});
-			res.write( obj.data );
-			res.end();
+
+			setTimeout( ()=>{ cb( req, res, true ); }, 2 + Math.random() * 10 );
+			return;
+		}
+
+		get_busy = true;
+		busy_tot--;
+
+		if ( busy_tot > 20 )
+		console.log( 'Slowing down file download due to '+busy_tot+' files requested at the same time' );
+
+		var path = __dirname + '/game' + fullPath;
+		//var path = './game' + fullPath;
+
+
+		if ( fullPath.substring( 0, '/sd_hook'.length ) === '/sd_hook' )
+		{
+			let request = fullPath.split( '?' )[ 1 ];
+			let request_parts = request.split( '{' );
+
+			let _net_id = parseInt( request_parts[ 0 ] );
+
+			let response = null;
+
+			let ent = sdEntity.entities_by_net_id_cache_map.get( _net_id );
+
+			if ( ent !== undefined )
+			if ( typeof ent.HandleHookReply !== 'undefined' )
+			{
+				let json_obj = null;
+				try
+				{
+					json_obj = JSON.parse( '{' + decodeURI( request_parts.slice( 1 ).join( '{' ) ) ); // Won't accept non-JSON objects
+				}
+				catch ( e )
+				{
+					debugger;
+				}
+
+				if ( json_obj )
+				response = ent.HandleHookReply( json_obj );
+			}
+
+			if ( !response )
+			{
+				response = { no_response: 1 };
+			}
+
+			res.send( JSON.stringify( response ) );
+			Finalize();
+			return;
+		}
+		else
+		if ( fullPath === '/get_classes.txt' )
+		//if ( fullPath === '/get_entity_classes.txt' )
+		{
+			res.send( get_classes_page );
+			Finalize();
+			return;
+		}
+		else
+		if ( file_cache )
+		{
+			let url = 'game' + fullPath;
+
+			if ( url.length > 0 )
+			if ( url.charAt( url.length - 1 ) === '/' )
+			url += 'index.html';
+
+			// Mespeak's path issue
+			url = url.split( '//' ).join( '/' );
+
+			let obj = file_cache.get( url );
+
+			//trace( 'RECV', url );
+
+			if ( obj )
+			{
+				res.writeHead(200, {'Content-Type': obj.type, 'Content-Length':obj.length});
+				res.write( obj.data );
+				res.end();
+			}
+			else
+			{
+				res.writeHead( 404 );
+				res.write( '404' );
+				res.end();
+			}
+			Finalize();
 		}
 		else
 		{
-			res.writeHead( 404 );
-			res.write( '404' );
-			res.end();
-		}
-		Finalize();
-	}
-	else
-	{
-		let path2 = path.split('?')[0];
+			let path2 = path.split('?')[0];
 
-		fs.access( path2, fs.F_OK, (err) => 
-		{
-			//let t3 = Date.now();
-
-			if ( !file_exists( path ) ) // Silent
+			fs.access( path2, fs.F_OK, (err) => 
 			{
-				res.end();
+				//let t3 = Date.now();
 
-				Finalize();
-				return;
-			}
+				if ( !file_exists( path ) ) // Silent
+				{
+					res.end();
 
-			if ( err ) // Access errors usually
-			{
-				//res.send( '404' );//console.error(err)
-				res.status( 404 ).end();
+					Finalize();
+					return;
+				}
 
-				Finalize();
-				return;
-			}
+				if ( err ) // Access errors usually
+				{
+					//res.send( '404' );//console.error(err)
+					res.status( 404 ).end();
 
-			//res.sendFile( path );
-			//file exists
+					Finalize();
+					return;
+				}
 
-			if ( path2[ path2.length - 1 ] === '/' )
-			path2 += 'index.html';
-		
-			if ( path2.slice( -5 ) === '.html' )
-			{
-				fs.readFile( path2, function(err, data) {
-					if (err) {
-						res.send(404);
-					} else {
-						res.contentType('text/html'); // Or some other more appropriate value
-						//transform(data); // use imagination please, replace with custom code
-						
-						let _parts_all = [];
-						
-						let parts = data.toString().split( '<?' );
-						for ( let i = 0; i < parts.length; i++ )
-						{
-							parts[ i ] = parts[ i ].split( '?>' );
-							_parts_all.push( ...parts[ i ] );
-						}
-						
-						let code = '';
-						let out = '';
-						
-						let print_html = true; // Can be disabled via <? print_html = false; ?>
-						
-						function print( str )
-						{
-							out += str;
-						}
-						function printOrReturn( str )
-						{
-							if ( print_html )
-							out += str;
-						
-							return str;
-						}
-						
-						for ( let _i = 0; _i < _parts_all.length; _i++ )
-						{
-							/*if ( _parts_all[ _i ].indexOf( '`' ) !== -1 )
+				//res.sendFile( path );
+				//file exists
+
+				if ( path2[ path2.length - 1 ] === '/' )
+				path2 += 'index.html';
+
+				if ( path2.slice( -5 ) === '.html' )
+				{
+					fs.readFile( path2, function(err, data) {
+						if (err) {
+							res.send(404);
+						} else {
+							res.contentType('text/html'); // Or some other more appropriate value
+							//transform(data); // use imagination please, replace with custom code
+
+							let _parts_all = [];
+
+							let parts = data.toString().split( '<?' );
+							for ( let i = 0; i < parts.length; i++ )
 							{
-								trace('!!!');
-								debugger;
-							}*/
-
-							if ( _i % 2 === 0 )
-							{
-								let s = _parts_all[ _i ];
-								
-								//code += 'printOrReturn(`' + s + '`);';
-								
-								code += 'printOrReturn(' + JSON.stringify( s ) + ');';
+								parts[ i ] = parts[ i ].split( '?>' );
+								_parts_all.push( ...parts[ i ] );
 							}
-							else
-							code += '\n' + _parts_all[ _i ] + '\n';
+
+							let code = '';
+							let out = '';
+
+							let print_html = true; // Can be disabled via <? print_html = false; ?>
+
+							function print( str )
+							{
+								out += str;
+							}
+							function printOrReturn( str )
+							{
+								if ( print_html )
+								out += str;
+
+								return str;
+							}
+
+							for ( let _i = 0; _i < _parts_all.length; _i++ )
+							{
+								/*if ( _parts_all[ _i ].indexOf( '`' ) !== -1 )
+								{
+									trace('!!!');
+									debugger;
+								}*/
+
+								if ( _i % 2 === 0 )
+								{
+									let s = _parts_all[ _i ];
+
+									//code += 'printOrReturn(`' + s + '`);';
+
+									code += 'printOrReturn(' + JSON.stringify( s ) + ');';
+								}
+								else
+								code += '\n' + _parts_all[ _i ] + '\n';
+							}
+
+							eval( code );
+
+							res.send( out );
 						}
-						
-						eval( code );
-						
-						res.send( out );
-					}
-				});
-			}
-			else
-			res.sendFile( path );
+					});
+				}
+				else
+				res.sendFile( path );
 
 
-			Finalize();
-		});
+				Finalize();
+			});
+		}
 	}
-});
+	//app.get('/', cb );
+	//app.get('/*fullPath', cb );
+	app.get('/{*fullPath}', cb );
+	//app.get('/*', ); No longer supported
+}
 
 
 
@@ -1045,11 +1047,11 @@ function GetPlayingPlayersCount()
 */
 const GetPlayingPlayersCount = sdWorld.GetPlayingPlayersCount;
 
-if ( directory_to_save_player_count !== null )
+if ( path_for_online_count_save !== null )
 {
 	setInterval( ()=>{
 		
-		fs.writeFile( directory_to_save_player_count, sdWorld.GetPlayingPlayersCount()+'/'+sdWorld.sockets.length+'', ( err )=>
+		fs.writeFile( path_for_online_count_save, sdWorld.GetPlayingPlayersCount()+'/'+sdWorld.sockets.length+'', ( err )=>
 		{
 			
 		});
@@ -1079,7 +1081,7 @@ var no_respawn_areas = []; // arr of { x, y, radius, until }
 
 function UpdateOnlineCount()
 {
-	let pc = GetPlayingPlayersCount();
+	let pc = GetPlayingPlayersCount( false, false );
 
 	let connected_total = 0;
 
@@ -1122,6 +1124,9 @@ const hash_flood_prevention = []; // Array of { hash, expire_on } - used to prev
 const unique_hash_queue_length = 50; // It will likely limit number of online players by 50, at least if they connect at the same time
 const hash_floor_expire_in = 1000 * 30;
 globalThis.hash_flood_prevention = hash_flood_prevention;
+
+let menu_chat_messages = [];
+let menu_chat_user_counter = 0;
 
 let next_drop_log = 0;
 io.on( 'connection', ( socket )=> 
@@ -1562,7 +1567,9 @@ io.on( 'connection', ( socket )=>
 		}
 		
 		
-	
+		//socket.byte_shifter.onRemove();
+		//socket.byte_shifter = new sdByteShifter( socket );
+		//socket.byte_shifter.Reset();
 	
 		
 		let t = Date.now();
@@ -1771,6 +1778,7 @@ io.on( 'connection', ( socket )=>
 				socket.respawn_block_until = sdWorld.time + ( 1000 * 60 * 2 ); // 2 minutes respawn wait time
 				// Not sure if this is ideal solution. - Booraz149
 			}
+			sdEntity.entities.push( character_entity );
 			
 			if ( sdWorld.server_config.PlayerSpawnPointSeeker )
 			if ( sdWorld.server_config.PlayerSpawnPointSeeker( character_entity, socket ) )
@@ -1920,7 +1928,7 @@ io.on( 'connection', ( socket )=>
 		{
 			setTimeout( ()=>
 			{
-				socket.emit('SET sdWorld.my_entity._god', true );//, { reliable: true, runs: 100 } );
+				socket.emit('SET sdWorld.my_entity._god', character_entity._god, character_entity._debug );//, { reliable: true, runs: 100 } );
 				
 			}, 2000 );
 		}
@@ -1946,7 +1954,7 @@ io.on( 'connection', ( socket )=>
 			}
 		}
 
-		sdEntity.entities.push( character_entity );
+		//sdEntity.entities.push( character_entity );
 		
 
 		//socket.character = character_entity; // Twice?
@@ -2010,8 +2018,55 @@ io.on( 'connection', ( socket )=>
 			{
 				if ( url.indexOf( 'localhost' ) === -1 ) // No point in these as they can't be accessed from outside anyway
 				if ( url.indexOf( '127.0.0.1' ) === -1 ) // No point in these as they can't be accessed from outside anyway
+				if ( url.indexOf( '[::1]' ) === -1 ) // No point in these as they can't be accessed from outside anyway
 				sdWorld.server_url = url;
 			}
+		}
+	});
+	socket.listens_to_menu_chat = false;
+	socket.menu_chat_uid = menu_chat_user_counter++;
+	socket.on('menu_chat_command', ( v )=>
+	{
+		if ( v === 1 )
+		{
+			if ( !socket.listens_to_menu_chat )
+			{
+				let response = { 
+					menu_chat_uid: socket.menu_chat_uid, 
+					time: Date.now(), 
+					messages: menu_chat_messages.slice() 
+				};
+				socket.emit( 'MENU_CHAT_UPDATE', response );
+			}
+			socket.listens_to_menu_chat = true;
+			socket.likely_a_real_player = true;
+		}
+		else
+		if ( v === 0 )
+		{
+			socket.listens_to_menu_chat = false;
+		}
+		else
+		{
+			v = (v+'').substring( 0, 2000 );
+			
+			let time = Date.now();
+			
+			// These are sent as is (!) Handle IP address information accordingly if you are going to
+			let obj = {
+				from: socket.menu_chat_uid,
+				text: v,
+				time: time,
+				text_censored: sdModeration.IsPhraseBad( v, socket )
+			};
+			
+			menu_chat_messages.push( obj );
+			if ( menu_chat_messages.length > 100 )
+			menu_chat_messages.shift();
+			
+			for ( let i = 0; i < sockets.length; i++ )
+			if ( sockets[ i ].listens_to_menu_chat )
+			sockets[ i ].emit( 'MENU_CHAT_UPDATE', { messages: [ obj ] } );
 		}
 	});
 	socket.on('one_time_key', ( v )=>
@@ -2576,9 +2631,11 @@ io.on( 'connection', ( socket )=>
 							corrected = true;
 
 							const overlap = 0.001; // 1
+							
+							let filter = socket.character.GetCurrentCollisionFilter();
 
 							for ( let i = 1; i > 0; i -= 1 / steps )
-							if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y + dy * i, overlap ) )
+							if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y + dy * i, overlap, filter ) )
 							{
 								corrected = false;
 								break;
@@ -2590,7 +2647,7 @@ io.on( 'connection', ( socket )=>
 
 								// Up
 								for ( let i = 1; i > 0; i -= 1 / steps )
-								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x, socket.character.y + dy * i, overlap ) )
+								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x, socket.character.y + dy * i, overlap, filter ) )
 								{
 									corrected = false;
 									break;
@@ -2599,7 +2656,7 @@ io.on( 'connection', ( socket )=>
 								// Then to right
 								if ( corrected )
 								for ( let i = 1; i > 0; i -= 1 / steps )
-								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y + dy, overlap ) )
+								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y + dy, overlap, filter ) )
 								{
 									corrected = false;
 									break;
@@ -2613,7 +2670,7 @@ io.on( 'connection', ( socket )=>
 
 								// Right
 								for ( let i = 1; i > 0; i -= 1 / steps )
-								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y, overlap ) )
+								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx * i, socket.character.y, overlap, filter ) )
 								{
 									corrected = false;
 									break;
@@ -2622,7 +2679,7 @@ io.on( 'connection', ( socket )=>
 								// Then to up
 								if ( corrected )
 								for ( let i = 1; i > 0; i -= 1 / steps )
-								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx, socket.character.y + dy * i, overlap ) )
+								if ( !socket.character.CanMoveWithoutOverlap( socket.character.x + dx, socket.character.y + dy * i, overlap, filter ) )
 								{
 									corrected = false;
 									break;
@@ -2741,7 +2798,7 @@ io.on( 'connection', ( socket )=>
 					{
 					}
 					else
-					if ( !ent.IsDamageAllowedByAdmins() )
+					if ( ent.IsInSafeArea() )
 					{
 						socket.SDServiceMessage( 'Entity is in restricted area' );
 						return;
@@ -3044,6 +3101,9 @@ io.on( 'connection', ( socket )=>
 			socket.known_non_removed_dynamics = VoidArray;
 			socket.lost_messages = VoidArray;
 			socket.sent_messages = VoidArray;
+			
+			socket.byte_shifter.onRemove();
+			socket.byte_shifter = null;
 		
 			UpdateOnlineCount();
 			

@@ -136,7 +136,8 @@ class sdSetrDestroyer extends sdEntity
 					bullet_obj1._damage= 5;
 					bullet_obj1.color ='#0000c8';
 					bullet_obj1._dirt_mult = 1;
-
+					bullet_obj1._no_explosion_smoke = true; 
+		
 					sdEntity.entities.push( bullet_obj1 );
 
 		let bullet_obj2 = new sdBullet({ x: this.x, y: this.y });
@@ -154,6 +155,8 @@ class sdSetrDestroyer extends sdEntity
 					bullet_obj2._damage= 5;
 					bullet_obj2.color ='#0000c8';
 					bullet_obj2._dirt_mult = 1;
+					bullet_obj2._no_explosion_smoke = true; 
+		
 					sdEntity.entities.push( bullet_obj2 );
 
 		let bullet_obj3 = new sdBullet({ x: this.x, y: this.y });
@@ -171,6 +174,7 @@ class sdSetrDestroyer extends sdEntity
 					bullet_obj3._damage= 5;
 					bullet_obj3.color ='#0000c8';
 					bullet_obj3._dirt_mult = 1;
+					bullet_obj3._no_explosion_smoke = true; 
 
 					sdEntity.entities.push( bullet_obj3 );
 
@@ -189,6 +193,8 @@ class sdSetrDestroyer extends sdEntity
 					bullet_obj4._damage= 5;
 					bullet_obj4.color ='#0000c8';
 					bullet_obj4._dirt_mult = 1;
+					bullet_obj4._no_explosion_smoke = true; 
+		
 					sdEntity.entities.push( bullet_obj4 );
 	}
 	CanAttackEnt( ent )
@@ -695,10 +701,15 @@ class sdSetrDestroyer extends sdEntity
 						let dx = ( targets[ i ].sx || 0 );
 						let dy = ( targets[ i ].sy || 0 );
 
-						let an = Math.atan2( targets[ i ].y - this.y - dy * 3, targets[ i ].x - this.x  - dx * 3 ) + ( Math.random() * 2 - 1 ) * 0.1;
+						//let an = Math.atan2( targets[ i ].y - this.y - dy * 3, targets[ i ].x - this.x  - dx * 3 ) + ( Math.random() * 2 - 1 ) * 0.1;
+						
+						let an = Math.atan2( 
+								targets[ i ].y + ( targets[ i ]._hitbox_y1 + targets[ i ]._hitbox_y2 ) / 2 - this.y - dy * 3, 
+								targets[ i ].x + ( targets[ i ]._hitbox_x1 + targets[ i ]._hitbox_x2 ) / 2 - this.x - dx * 3 
+						) + ( Math.random() * 2 - 1 ) * 0.1;
 
-						this.look_x = targets[ i ].x + ( dx * 3 );
-						this.look_y = targets[ i ].y + ( dy * 3 ); // Homing coordinates are updated only when firing so players can still dodge them
+						this.look_x = targets[ i ].x + ( targets[ i ]._hitbox_x1 + targets[ i ]._hitbox_x2 ) / 2 + ( dx * 3 );
+						this.look_y = targets[ i ].y + ( targets[ i ]._hitbox_y1 + targets[ i ]._hitbox_y2 ) / 2 + ( dy * 3 ); // Homing coordinates are updated only when firing so players can still dodge them
 						let bullet_obj = new sdBullet({ x: this.x, y: this.y });
 						bullet_obj._owner = this;
 						bullet_obj.sx = Math.cos( an );
@@ -782,6 +793,15 @@ class sdSetrDestroyer extends sdEntity
 		{
 			this._alert_intensity += GSPEED;
 		}
+
+		if ( !sdWorld.is_server || sdWorld.is_singleplayer )
+		{
+			if ( this.hea < this._hmax / 5 )
+			{
+					let e = new sdEffect({ type: sdEffect.TYPE_SMOKE, x:this.x, y:this.y, sx: -Math.random() + Math.random(), sy:-1 * Math.random() * 5, scale:1, radius:0.5, color:sdEffect.GetSmokeColor( sdEffect.smoke_colors ) });
+					sdEntity.entities.push( e );
+			}
+		}
 			
 		this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 	}
@@ -792,10 +812,15 @@ class sdSetrDestroyer extends sdEntity
 		return false;
 	}
 	
+	get title()
+	{
+		return 'Setr Destroyer';
+	}
+	
 	DrawHUD( ctx, attached ) // foreground layer
 	{
 		//if ( this.death_anim === 0 )
-		sdEntity.Tooltip( ctx, "Setr Destroyer", 0, -30 );
+		sdEntity.Tooltip( ctx, this.title, 0, -30 );
 		
 		this.DrawHealthBar( ctx, undefined, 10 );
 	}

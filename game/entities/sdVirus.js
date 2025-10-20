@@ -33,7 +33,7 @@ class sdVirus extends sdEntity
 		sdVirus.max_seek_range = 1000;
 		
 		sdVirus.normal_max_health = 50;
-		sdVirus.normal_max_health_max = 500 * 3; 
+		sdVirus.normal_max_health_max = 800 * 3; 
 
 		sdVirus.viruses_tot = 0; // Will bug out in case of manual creation with build tool - because onRemoveAsFakeEntity will be called instead of onRemove
 		sdVirus.big_viruses = 0; // Will bug out in case of manual creation with build tool - because onRemoveAsFakeEntity will be called instead of onRemove
@@ -53,6 +53,8 @@ class sdVirus extends sdEntity
 		
 		this.sx = 0;
 		this.sy = 0;
+		
+		this.held_by = null;
 		
 		this.hmax = sdVirus.normal_max_health;
 		this._hea = this.hmax;
@@ -162,8 +164,12 @@ class sdVirus extends sdEntity
 				this._current_target = character;
 				
 				this._last_target_change = sdWorld.time;
-
-				sdSound.PlaySound({ name:'virus_alert', x:this.x, y:this.y, volume: 0.5, pitch: 1 * sdVirus.normal_max_health / this.hmax });
+				
+				// Some randomness because it is too loud when big virus explodes
+				setTimeout( ()=>
+				{
+					sdSound.PlaySound({ name:'virus_alert', x:this.x, y:this.y, volume: 0.5, pitch: 1 * sdVirus.normal_max_health / this.hmax });
+				}, Math.random() * 500 );
 			}
 		}
 	}
@@ -193,7 +199,7 @@ class sdVirus extends sdEntity
 		if ( this._hea <= 0 && was_alive )
 		{
 			// If not broken into pieces
-			if ( this._hea >= -this.hmax / 50 * 100 )
+			if ( this._hea >= -this.hmax / 80 * 100 )
 			sdSound.PlaySound({ name:'virus_damage2', x:this.x, y:this.y, volume: 1.25, pitch: 1 * sdVirus.normal_max_health / this.hmax });
 				
 			sdSound.PlaySound({ name:'blockB4', x:this.x, y:this.y, volume: 0.25, pitch:4 * sdVirus.normal_max_health / this.hmax });
@@ -202,7 +208,7 @@ class sdVirus extends sdEntity
 	
 
 			//if ( this._split === 1 )
-			if ( this.hmax > 100 )
+			if ( this.hmax > 160 )
 			{
 				const filtering = ( from_entity )=>
 				{
@@ -271,24 +277,27 @@ class sdVirus extends sdEntity
 			}
 		}
 		
-		if ( this._hea < -this.hmax / 50 * 100 )
+		if ( this._hea < -this.hmax / 80 * 100 )
 		this.remove();
 	}
 	
 	get mass() { return 30 * this.hmax / sdVirus.normal_max_health; }
 	Impulse( x, y )
 	{
+		if ( this.held_by )
+		return;
+	
 		this.sx += x / this.mass;
 		this.sy += y / this.mass;
 	}
-	/*Impact( vel ) // fall damage basically
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
 	{
-		// less fall damage
-		if ( vel > 10 )
-		{
-			this.DamageWithEffect( ( vel - 4 ) * 15 );
-		}
-	}*/
+		if ( this.held_by )
+		return [ this.held_by ]; 
+	
+		return [];
+	}
+	
 	Impact( vel ) // fall damage basically
 	{
 		if ( vel > 8 ) // less fall damage
@@ -359,7 +368,7 @@ class sdVirus extends sdEntity
 		sdWorld.last_hit_entity = null;
 		
 		let in_water = sdWorld.CheckWallExistsBox( this.x + this._hitbox_x1, this.y + this._hitbox_y1, this.x + this._hitbox_x2, this.y + this._hitbox_y2, null, null, sdWater.water_class_array );
-		//let in_water = sdWorld.CheckWallExists( this.x, this.y, null, null, sdWater.water_class_array );
+		//let in_water = sdWater.all_swimmers.has( this );
 		
 		if ( in_water )
 		{
@@ -382,26 +391,27 @@ class sdVirus extends sdEntity
 				}
 			}
 		}
-		//else
-		//{
-			this.sy += sdWorld.gravity * GSPEED;
-		//}
 		
-		if ( sdWorld.is_server )
+		if ( !this.held_by )
 		{
-			if ( this._last_bite < sdWorld.time - ( 1000 * 60 * 3 ) && this.hmax === sdVirus.normal_max_health ) // 3 minutes since last attack? Also did it not grow at all?
+			this.sy += sdWorld.gravity * GSPEED;
+
+			if ( sdWorld.is_server )
 			{
-				this._hibernation_check_timer -= GSPEED;
-				
-				if ( this._hibernation_check_timer < 0 )
+				if ( this._last_bite < sdWorld.time - ( 1000 * 60 * 3 ) && this.hmax === sdVirus.normal_max_health ) // 3 minutes since last attack? Also did it not grow at all?
 				{
-					this._hibernation_check_timer = 30 * 30; // Check if hibernation is possible every 30 seconds
-+					this.AttemptBlockBurying(); // Attempt to hibernate inside nearby blocks
+					this._hibernation_check_timer -= GSPEED;
+
+					if ( this._hibernation_check_timer < 0 )
+					{
+						this._hibernation_check_timer = 30 * 30; // Check if hibernation is possible every 30 seconds
+						this.AttemptBlockBurying(); // Attempt to hibernate inside nearby blocks
+					}
 				}
 			}
+
+			this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 		}
-		
-		this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 		
 		if ( this.death_anim === 0 )
 		if ( this._current_target )
@@ -423,9 +433,9 @@ class sdVirus extends sdEntity
 				if ( from_entity.IsTargetable() )
 				if ( sdWorld.CheckLineOfSight( this.x, this.y, from_entity.x, from_entity.y, null, null, sdCom.com_creature_attack_unignored_classes ) )
 				{
-					from_entity.DamageWithEffect( 12 * this.hmax / sdVirus.normal_max_health, this );
+					from_entity.DamageWithEffect( 20 * this.hmax / sdVirus.normal_max_health, this );
 					
-					this._hea = Math.min( this.hmax, this._hea + 15 * this.hmax / sdVirus.normal_max_health );
+					this._hea = Math.min( this.hmax, this._hea + 1 * this.hmax / sdVirus.normal_max_health );
 					
 					from_entity.PlayDamageEffect( xx, yy );
 					//sdWorld.SendEffect({ x:xx, y:yy, type:from_entity.GetBleedEffect(), filter:from_entity.GetBleedEffectFilter() });
@@ -438,7 +448,11 @@ class sdVirus extends sdEntity
 	DrawHUD( ctx, attached ) // foreground layer
 	{
 		if ( this.death_anim === 0 )
-		sdEntity.Tooltip( ctx, "Virus" );
+		{
+			sdEntity.Tooltip( ctx, "Virus" );
+
+			this.BasicCarryTooltip( ctx, 8 );
+		}
 	}
 	Draw( ctx, attached )
 	{
@@ -452,33 +466,35 @@ class sdVirus extends sdEntity
 			ctx.filter = 'hue-rotate(' + this.hue + 'deg)';
 		}
 		
-		ctx.scale( this.side * this.hmax / sdVirus.normal_max_health, 1 * this.hmax / sdVirus.normal_max_health );
-
-		let xx = 0;
-		let yy = 0;
-		
-		if ( this.death_anim > 0 )
+		if ( this.held_by === null || attached )
 		{
-			if ( this.death_anim > sdVirus.death_duration + sdVirus.post_death_ttl - 30 )
-			{
-				ctx.globalAlpha = 0.5;
-			}
-
-			xx = Math.min( 5 - 1, ~~( ( this.death_anim / sdVirus.death_duration ) * 5 ) );
-			yy = 1;
+			let side = this.side;
 			
-			//let frame = Math.min( sdVirus.death_imgs.length - 1, ~~( ( this.death_anim / sdVirus.death_duration ) * sdVirus.death_imgs.length ) );
-			//ctx.drawImageFilterCache( sdVirus.death_imgs[ frame ], - 16, - 16, 32,32 );
-		}
-		else
-		if ( this.hurt_timer > 0 )
-		xx = 2;
-		//ctx.drawImageFilterCache( sdVirus.img_virus_hurt, - 16, - 16, 32,32 );
-		else
-		xx = Math.min( ( sdWorld.time % 400 < 200 ) ? 0 : 1 );
-		//ctx.drawImageFilterCache( ( sdWorld.time % 400 < 200 ) ? sdVirus.img_virus : sdVirus.img_virus_walk, - 16, - 16, 32,32 );
+			if ( this.held_by )
+			if ( this.held_by.is( sdCharacter ) )
+			side = this.held_by._side;
+			
+			ctx.scale( side * this.hmax / sdVirus.normal_max_health, 1 * this.hmax / sdVirus.normal_max_health );
 
-		ctx.drawImageFilterCache( sdVirus.img_virus, xx * 32, yy * 32, 32,32, -16, -16, 32,32 );
+			let xx = 0;
+			let yy = 0;
+
+			if ( this.death_anim > 0 )
+			{
+				if ( this.death_anim > sdVirus.death_duration + sdVirus.post_death_ttl - 30 )
+				ctx.globalAlpha = 0.5;
+
+				xx = Math.min( 5 - 1, ~~( ( this.death_anim / sdVirus.death_duration ) * 5 ) );
+				yy = 1;
+			}
+			else
+			if ( this.hurt_timer > 0 )
+			xx = 2;
+			else
+			xx = Math.min( ( sdWorld.time % 400 < 200 ) ? 0 : 1 );
+
+			ctx.drawImageFilterCache( sdVirus.img_virus, xx * 32, yy * 32, 32,32, -16, -16, 32,32 );
+		}
 		
 		ctx.globalAlpha = 1;
 		ctx.filter = 'none';

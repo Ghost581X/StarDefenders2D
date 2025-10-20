@@ -15,6 +15,7 @@ import sdGun from './sdGun.js';
 import sdArea from './sdArea.js';
 import sdPlayerDrone from './sdPlayerDrone.js';
 import sdBaseShieldingUnit from './sdBaseShieldingUnit.js';
+import sdBlock from './sdBlock.js';
 
 
 import sdRenderer from '../client/sdRenderer.js';
@@ -24,24 +25,53 @@ class sdCable extends sdEntity
 {
 	static init_class()
 	{
+		sdCable.max_distance = 200; // Same as for sdCom, at least for now
+		/*
 		sdCable.colors = [ // color, opacity, width
 			'#000000', 0.5, 0.25, // any
-			'#72beff', 0.8, 0.5, // matter
-			'#c4a476', 0.2, 0.4, // air
+			'#000000', 0.8, 0.5, // matter
+			'#00ff00', 0.4, 0.7, // wireless
 			'#161617', 0.8, 1, // liquid, dark
 			'#752e2e', 1, 0.5, // io1, red
 			'#497d49', 1, 0.5, // io2, green
 			'#4a5768', 1, 0.5 // io3, blue
-		];
+		];*/
+		sdCable.type_properties = [];
 		
-		sdCable.TYPE_ANY = 0; // Any type will list all connected entities
-		sdCable.TYPE_MATTER = 1;
-		sdCable.TYPE_AIR = 2;
-		sdCable.TYPE_LIQUID = 3;
-		sdCable.TYPE_IO1 = 4;
-		sdCable.TYPE_IO2 = 5;
-		sdCable.TYPE_IO3 = 6;
-		sdCable.TYPE_LAST = 7;
+		sdCable.type_properties[ sdCable.TYPE_ANY = 0 ] = null; // Any type will list all connected entities
+		
+		sdCable.type_properties[ sdCable.TYPE_MATTER = 1 ] = {
+			color: '#000000', 
+			opacity: 0.8, 
+			width: 0.5,
+			max_distance: 200
+		};
+		
+		sdCable.type_properties[ sdCable.TYPE_WIRELESS = 2 ] = {
+			color: '#00ff00', 
+			opacity: 0.4, 
+			width: 0.7,
+			max_distance: 2000,
+			
+			by_node_variation:
+			[
+				'#00ff00',
+				'#ff0000',
+				'#0000ff',
+				'#ffffff',
+				'#00ffff',
+				'#ffff00'
+			]
+		};
+		
+		sdCable.type_properties[ sdCable.TYPE_LIQUID = 3 ] = {
+			color: '#161617', 
+			opacity: 0.8, 
+			width: 1,
+			max_distance: 200
+		};
+		
+		sdCable.TYPE_LAST = sdCable.type_properties.length;
 		
 		sdCable.attacheable_entities = [
 			'sdMatterContainer',
@@ -77,7 +107,8 @@ class sdCable extends sdEntity
 			'sdStorage',
 			'sdSampleBuilder',
 			'sdWorkbench',
-			'sdMothershipContainer'
+			'sdMothershipContainer',
+			'sdConveyor'
 		];
 		
 		sdCable.empty_array = [];
@@ -104,8 +135,6 @@ class sdCable extends sdEntity
 		sdCable.cables_per_entity = new WeakMap();
 		//sdCable.connected_entities_per_entity = new WeakMap(); // entity => array of entities
 		sdCable.connected_entities_per_entity = new Map(); // entity => array of entities // Maps are faster?
-		
-		sdCable.max_distance = 200; // Same as for sdCom, at least for now
 		
 		sdCable.counter = 0; // For client to minimize point count in case of spam
 		
@@ -154,6 +183,8 @@ class sdCable extends sdEntity
 		
 		this.t = ( params.type === undefined ) ? sdCable.TYPE_MATTER : params.type; // type
 		
+		//this._debug_enforced = false;
+		
 		/*this.p = null;
 		this.c = null;
 		
@@ -185,6 +216,8 @@ class sdCable extends sdEntity
 		
 		this._shielded = null; // Is this entity protected by a base defense unit?
 		
+		this.v = 0; // Node's variation for wireless cables
+		
 		Object.defineProperty( this, '_p', { enumerable: false });
 		Object.defineProperty( this, '_c', { enumerable: false });
 		
@@ -195,7 +228,7 @@ class sdCable extends sdEntity
 		sdCable.cables.push( this );
 	}
 	
-	getRequiredEntities() // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
 	{
 		if ( this.p && this.c && !this.p._is_being_removed && !this.c._is_being_removed )
 		return [ this.p, this.c ]; 
@@ -344,6 +377,9 @@ class sdCable extends sdEntity
 	{
 		let old = this.p;
 		
+		if ( e === old )
+		return;
+		
 		//debugger;
 		
 		if ( this.p )
@@ -373,6 +409,9 @@ class sdCable extends sdEntity
 	set c( e )
 	{
 		let old = this.c;
+		
+		if ( e === old )
+		return;
 		
 		//debugger;
 		
@@ -434,6 +473,25 @@ class sdCable extends sdEntity
 		{
 			if ( sdWorld.is_server )
 			this.remove();
+			else
+			{
+				/*if ( !this._debug_enforced )
+				{
+					this._debug_enforced = true;
+					try
+					{
+						EnforceChangeLog( this.p, '_is_being_removed', false, false );
+						EnforceChangeLog( this.c, '_is_being_removed', false, false );
+					}catch(e){}
+				}*/
+				
+				// Sometimes p and c can point towards same object by _net_id but removed version, yet client might know about new non-removed one. Not sure why it happens but it happens. Without it cables will float mid-air
+				if ( this.p )
+				this.p = sdEntity.entities_by_net_id_cache_map.get( this.p._net_id ) || this.p;
+			
+				if ( this.c )
+				this.c = sdEntity.entities_by_net_id_cache_map.get( this.c._net_id ) || this.c;
+			}
 		
 			return;
 		}
@@ -442,9 +500,15 @@ class sdCable extends sdEntity
 		{
 			if ( sdWorld.is_server )
 			{
+				this.x = this.p.x + this.d[ 0 ];
+				this.y = this.p.y + this.d[ 1 ];
+				
 				if ( this.hitbox_x1 === this._hitbox_x1 && this.hitbox_x2 === this._hitbox_x2 &&
 					 this.hitbox_y1 === this._hitbox_y1 && this.hitbox_y2 === this._hitbox_y2 )
 				{
+					if ( !sdWorld.is_singleplayer )
+					if ( !this.p.IsPlayerClass() )
+					if ( !this.c.IsPlayerClass() )
 					this.SetHiberState( sdEntity.HIBERSTATE_HIBERNATED_NO_COLLISION_WAKEUP, false );
 				}
 				else
@@ -453,6 +517,7 @@ class sdCable extends sdEntity
 					// Update taken area right before hibernation
 					this._last_x = undefined;
 					this._last_y = undefined;
+					this._update_version++;
 					/*
 					if ( !this.p.hasEventListener( 'REMOVAL', this.Wakeup ) )
 					{
@@ -476,6 +541,8 @@ class sdCable extends sdEntity
 		
 		if ( di < 1 )
 		di = 1;
+	
+		let properties = sdCable.type_properties[ this.t ];
 		
 		if ( this._points )
 		{
@@ -488,6 +555,9 @@ class sdCable extends sdEntity
 			this._points[ this._points.length - 1 ].y = this.c.y + this.d[ 3 ];
 			
 			let points_expected = ( di / 8 );
+			
+			if ( this.t === sdCable.TYPE_WIRELESS )
+			points_expected = 2;
 			
 			if ( points_expected > 4 )
 			if ( sdCable.counter > 8 )
@@ -549,7 +619,7 @@ class sdCable extends sdEntity
 						this._points[ i ].cache.x = xx;
 						this._points[ i ].cache.y = yy;
 						
-						this._points[ i ].cache.exists = sdWorld.CheckWallExists( this._points[ i ].x + this._points[ i ].sx, this._points[ i ].y + this._points[ i ].sy, null, null, [ 'sdBlock' ] );
+						this._points[ i ].cache.exists = sdWorld.CheckWallExists( this._points[ i ].x + this._points[ i ].sx, this._points[ i ].y + this._points[ i ].sy, null, null, sdBlock.as_class_list );
 					}
 					
 					//if ( !sdWorld.CheckWallExists( this._points[ i ].x + this._points[ i ].sx, this._points[ i ].y + this._points[ i ].sy, null, null, [ 'sdBlock' ] ) )
@@ -576,7 +646,7 @@ class sdCable extends sdEntity
 						let cx = this._points[ 0 ].x * ( 1 - i / ( this._points.length - 1 ) ) + this._points[ this._points.length - 1 ].x * ( i / ( this._points.length - 1 ) );
 						let cy = this._points[ 0 ].y * ( 1 - i / ( this._points.length - 1 ) ) + this._points[ this._points.length - 1 ].y * ( i / ( this._points.length - 1 ) );
 
-						let p2 = Math.pow( Math.min( 1, di / ( sdCable.max_distance - 32 ) ), 32 ) * 0.5 * GSPEED;
+						let p2 = Math.pow( Math.min( 1, di / ( properties.max_distance - 32 ) ), 32 ) * 0.5 * GSPEED;
 						this._points[ i ].sx += ( cx - this._points[ i ].x ) * p2 * 0.5;
 						this._points[ i ].sy += ( cy - this._points[ i ].y ) * p2 * 0.5;
 						this._points[ i ].x += ( cx - this._points[ i ].x ) * p2;
@@ -617,55 +687,13 @@ class sdCable extends sdEntity
 						}
 					}
 				}
-				
-				/*if ( i < this._points.length - 1 )
-				{
-					let target_di = di / ( this._points.length - 1 );
-					let cur_di = sdWorld.Dist2D( this._points[ i ].x, this._points[ i ].y, this._points[ i + 1 ].x, this._points[ i + 1 ].y );
-
-					if ( cur_di > 0.001 )
-					{
-						let p = 1 / cur_di * ( cur_di - target_di ) * 0.5 * GSPEED;
-						
-						let dx = ( this._points[ i + 1 ].x - this._points[ i ].x );
-						let dy = ( this._points[ i + 1 ].y - this._points[ i ].y );
-
-						if ( i > 0 && i < this._points.length - 1 )
-						{
-							this._points[ i ].sx += dx * p;
-							this._points[ i ].sy += dy * p;
-
-							this._points[ i ].x += dx * p;
-							this._points[ i ].y += dy * p;
-							
-							// Forcing linear shape when stretched
-							let cx = this._points[ 0 ].x * ( 1 - i / ( this._points.length - 1 ) ) + this._points[ this._points.length - 1 ].x * ( i / ( this._points.length - 1 ) );
-							let cy = this._points[ 0 ].y * ( 1 - i / ( this._points.length - 1 ) ) + this._points[ this._points.length - 1 ].y * ( i / ( this._points.length - 1 ) );
-							
-							let p2 = Math.pow( di / sdCable.max_distance, 8 ) * 0.5 * GSPEED;
-							this._points[ i ].sx += ( cx - this._points[ i ].x ) * p2 * 0.5;
-							this._points[ i ].sy += ( cy - this._points[ i ].y ) * p2 * 0.5;
-							this._points[ i ].x += ( cx - this._points[ i ].x ) * p2;
-							this._points[ i ].y += ( cy - this._points[ i ].y ) * p2;
-							
-						}
-						
-						if ( i + 1 > 0 && i + 1 < this._points.length - 1 )
-						{
-							this._points[ i + 1 ].sx -= dx * p;
-							this._points[ i + 1 ].sy -= dy * p;
-
-							this._points[ i + 1 ].x -= dx * p;
-							this._points[ i + 1 ].y -= dy * p;
-						}
-					}
-				}*/
+			
 			}
 		}
 		
-		if ( di > sdCable.max_distance - 32 )
+		if ( di > properties.max_distance - 32 )
 		{
-			let force = Math.pow( 1 - ( sdCable.max_distance - di ) / 32, 2 );
+			let force = Math.pow( 1 - ( properties.max_distance - di ) / 32, 2 );
 			
 			if ( typeof this.p.sx !== 'undefined' )
 			{
@@ -691,7 +719,7 @@ class sdCable extends sdEntity
 			}
 		}
 		
-		if ( di > sdCable.max_distance )
+		if ( di > properties.max_distance )
 		{
 			if ( sdWorld.is_server )
 			{
@@ -739,8 +767,33 @@ class sdCable extends sdEntity
 		}
 	}
 	*/
+	
 	GetAccurateDistance( xx, yy ) // Used on client-side when right clicking on cables (also during cursor hovering for context menu and hint), also on server when distance between cable and player is measured
 	{
+		if ( this.t === sdCable.TYPE_WIRELESS )
+		{
+			let real_di = Math.min( 
+					sdWorld.Dist2D(	xx, 
+								yy, 
+								this.p.x + this.d[ 0 ], 
+								this.p.y + this.d[ 1 ]
+					),
+					sdWorld.Dist2D(	xx, 
+								yy, 
+								this.c.x + this.d[ 2 ], 
+								this.c.y + this.d[ 3 ]
+					)
+			);
+	
+			if ( sdWorld.is_server )
+			return real_di;
+			else
+			{
+				if ( real_di > 20 )
+				return real_di;
+			}
+		}
+		
 		if ( this.p && this.c )
 		{
 			let cursor = { 
@@ -765,18 +818,6 @@ class sdCable extends sdEntity
 			}
 			else
 			{
-				/*console.log ( 'dist1', sdWorld.distToSegment( 
-						cursor, 
-						{
-							x: this.p.x + this.d[ 0 ],
-							y: this.p.y + this.d[ 1 ]
-						}, 
-						{
-							x: this.c.x + this.d[ 2 ],
-							y: this.c.y + this.d[ 3 ]
-						}) );
-								*/
-								
 				return sdWorld.distToSegment( 
 						cursor, 
 						{
@@ -789,11 +830,7 @@ class sdCable extends sdEntity
 						}); // p is tested point, v and w is a segment;
 			}
 		}
-		/*console.log ( 'dist2', sdWorld.Dist2D(	xx, 
-								yy, 
-								Math.min( Math.max( this.x + this._hitbox_x1, xx ), this.x + this._hitbox_x2 ), 
-								Math.min( Math.max( this.y + this._hitbox_y1, yy ), this.y + this._hitbox_y2 ) ) );*/
-								
+	
 		return sdWorld.Dist2D(	xx, 
 								yy, 
 								Math.min( Math.max( this.x + this._hitbox_x1, xx ), this.x + this._hitbox_x2 ), 
@@ -814,16 +851,27 @@ class sdCable extends sdEntity
 		
 		//ctx.fillRect( -4, -4, 8, 8 );
 		
-		let assumed_type = 0;
+		let properties = sdCable.type_properties[ this.t ];
 		
 		for ( let stage = ( sdWorld.hovered_entity === this ? 0 : 1 ); stage < 2; stage++ )
 		//let stage = 1;
 		{
 			
-			ctx.fillStyle = sdCable.colors[ assumed_type * 3 ];
-			ctx.globalAlpha = sdCable.colors[ assumed_type * 3 + 1 ];
+			ctx.fillStyle = properties.color;
+			ctx.globalAlpha = properties.opacity;
+			
+			if ( this.t === sdCable.TYPE_WIRELESS )
+			{
+				ctx.fillStyle = properties.by_node_variation[ this.v ];
+				
+				let exectuter_character = sdWorld.my_entity;
+				if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) >= 32 )
+				{
+					ctx.globalAlpha *= 0.15;
+				}
+			}
 		
-			let radius = sdCable.colors[ this.t * 3 + 2 ];
+			let radius = properties.width;
 
 			if ( stage === 0 )
 			{
@@ -855,9 +903,13 @@ class sdCable extends sdEntity
 
 		ctx.filter = 'none';
 	}
+	get title()
+	{
+		return ( this.t === sdCable.TYPE_WIRELESS ) ? 'Wireless connection' : 'Cable';
+	}
 	DrawHUD( ctx, attached ) // foreground layer
 	{
-		sdEntity.Tooltip( ctx, 'Cable' );
+		sdEntity.Tooltip( ctx, this.title );
 	}
 	
 	ScheduleNetworkEntitiesUpdate()
@@ -947,47 +999,55 @@ class sdCable extends sdEntity
 		{
 			if ( sdArea.CheckPointDamageAllowed( exectuter_character.x, exectuter_character.y ) || this.p === exectuter_character || this.c === exectuter_character )
 			{
-				if ( this.GetAccurateDistance( exectuter_character.x, exectuter_character.y ) < 32 )
+				if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) < 32 )
 				{
-
-					//{
-						if ( exectuter_character.is( sdPlayerDrone ) ||
-						     ( exectuter_character._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ] && 
-							   exectuter_character._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ].class === sdGun.CLASS_CABLE_TOOL ) )
+					if ( exectuter_character.is( sdPlayerDrone ) ||
+						 ( exectuter_character._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ] && 
+						   exectuter_character._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ].class === sdGun.CLASS_CABLE_TOOL ) )
+					{
+						if ( command_name === 'CUT_CABLE' )
 						{
-							if ( command_name === 'CUT_CABLE' )
-							{
-								if ( this._shielded && !this._shielded._is_being_removed && this._shielded.protect_cables )
-								exectuter_character.Say( 'Protected by the base shielding unit... Really?' );
-								else
-								this.remove();
-							}
+							if ( this._shielded && !this._shielded._is_being_removed && this._shielded.protect_cables )
+							exectuter_character.Say( 'Protected by the base shielding unit... Really?' );
 							else
-							if ( command_name === 'SET_TYPE' )
-							{
-								if ( typeof parameters_array[ 0 ] === 'number' )
-								if ( !isNaN( parameters_array[ 0 ] ) )
-								if ( parameters_array[ 0 ] > sdCable.TYPE_ANY )
-								if ( parameters_array[ 0 ] < sdCable.TYPE_LAST )
-								{
-									this.SetType( parameters_array[ 0 ] );
-									executer_socket.SDServiceMessage( 'Cable transfer resource set' );
-								}
-							}
+							this.remove();
 						}
 						else
-						exectuter_character.Say( 'I\'d need cable management tool' );
-					//}
+						if ( command_name === 'SET_TYPE' )
+						{
+							if ( this.t !== sdCable.TYPE_WIRELESS )
+							if ( typeof parameters_array[ 0 ] === 'number' )
+							if ( !isNaN( parameters_array[ 0 ] ) )
+							if ( parameters_array[ 0 ] === sdCable.TYPE_MATTER ||
+								 parameters_array[ 0 ] === sdCable.TYPE_LIQUID )
+							//if ( parameters_array[ 0 ] > sdCable.TYPE_ANY )
+							//if ( parameters_array[ 0 ] < sdCable.TYPE_LAST )
+							{
+								this.SetType( parameters_array[ 0 ] );
+								executer_socket.SDServiceMessage( 'Cable transfer resource set' );
+							}
+						}
+					}
+					else
+					exectuter_character.Say( 'I\'d need cable management tool' );
 				}
 				else
 				{
+					if ( this.t === sdCable.TYPE_WIRELESS )
+					executer_socket.SDServiceMessage( 'This connection can be only managed near wireless nodes' );
+					else
 					executer_socket.SDServiceMessage( 'Cable is too far. Try staying near one of cable\'s end points' );
+				
 					return;
 				}
 			}
 			else
 			{
+				if ( this.t === sdCable.TYPE_WIRELESS )
+				executer_socket.SDServiceMessage( 'Connection is in damage & build restricted area' );
+				else
 				executer_socket.SDServiceMessage( 'Cable is in damage & build restricted area' );
+			
 				return;
 			}
 		}
@@ -998,15 +1058,22 @@ class sdCable extends sdEntity
 		if ( exectuter_character )
 		if ( exectuter_character.hea > 0 )
 		//if ( sdArea.CheckPointDamageAllowed( exectuter_character.x, exectuter_character.y ) || this.p === exectuter_character || this.c === exectuter_character )
-		if ( this.GetAccurateDistance( exectuter_character.x, exectuter_character.y ) < 20 ) // 32 can cause door to be "hackable" if first socket was on top
+		if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) < 20 ) // 32 can cause door to be "hackable" if first socket was on top
 		{
-			this.AddContextOption( 'Cut cable', 'CUT_CABLE', [] );
-			this.AddContextOption( 'Transfer matter', 'SET_TYPE', [ sdCable.TYPE_MATTER ] );
-			//this.AddContextOption( 'Transfer oxygen', 'SET_TYPE', [ sdCable.TYPE_AIR ] );
-			this.AddContextOption( 'Transfer liquid', 'SET_TYPE', [ sdCable.TYPE_LIQUID ] );
-			/*this.AddContextOption( 'Transfer IO-1 signals', 'SET_TYPE', [ sdCable.TYPE_IO1 ] );
-			this.AddContextOption( 'Transfer IO-2 signals', 'SET_TYPE', [ sdCable.TYPE_IO2 ] );
-			this.AddContextOption( 'Transfer IO-3 signals', 'SET_TYPE', [ sdCable.TYPE_IO3 ] );*/
+			if ( this.t === sdCable.TYPE_WIRELESS )
+			{
+				this.AddContextOption( 'Terminate connection', 'CUT_CABLE', [] );
+			}
+			else
+			{
+				this.AddContextOption( 'Cut cable', 'CUT_CABLE', [] );
+				this.AddContextOption( 'Transfer matter', 'SET_TYPE', [ sdCable.TYPE_MATTER ] );
+				//this.AddContextOption( 'Transfer oxygen', 'SET_TYPE', [ sdCable.TYPE_AIR ] );
+				this.AddContextOption( 'Transfer liquid', 'SET_TYPE', [ sdCable.TYPE_LIQUID ] );
+				/*this.AddContextOption( 'Transfer IO-1 signals', 'SET_TYPE', [ sdCable.TYPE_IO1 ] );
+				this.AddContextOption( 'Transfer IO-2 signals', 'SET_TYPE', [ sdCable.TYPE_IO2 ] );
+				this.AddContextOption( 'Transfer IO-3 signals', 'SET_TYPE', [ sdCable.TYPE_IO3 ] );*/
+			}
 		}
 	}
 }

@@ -21,6 +21,7 @@ import sdRift from './sdRift.js';
 import sdWeaponBench from './sdWeaponBench.js';
 import sdWeaponMerger from './sdWeaponMerger.js';
 import sdStatusEffect from './sdStatusEffect.js';
+import sdCrystal from './sdCrystal.js';
 
 import sdGunClass from './sdGunClass.js';
 
@@ -100,6 +101,8 @@ class sdGun extends sdEntity
 			sdWorld.ReplaceColorInSDFilter_v2( sdWorld.CreateSDFilter(), '#0042ff', '#ffffff' ) // 32
 		];
 		
+		sdGun.as_class_list = [ 'sdGun' ];
+		
 		sdGunClass.init_class(); // Will populate sdGun.classes array
 
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
@@ -170,6 +173,20 @@ class sdGun extends sdEntity
 		return GSPEED;
 	}
 	
+	IsGunRecoverable()
+	{
+		if ( sdWorld.server_config.keep_favourite_weapon_on_death === false ) // Needed for weapon bench scenario
+		return false;
+		
+		// Don't allow guns which deal lost damage to be recoverable via LRTP after dying
+		if ( this.class === sdGun.CLASS_LOST_CONVERTER || this.class === sdGun.CLASS_CUBE_SPEAR || this.class === sdGun.CLASS_CUBE_SPEAR ||
+			this.class === sdGun.CLASS_ZEKTARON_HARDLIGHT_SPEAR || this.class === sdGun.CLASS_ANCIENT_TRIPLE_RAIL ||
+			this.class === sdGun.CLASS_CUBE_VOID_CAPACITOR )
+		return false;
+		
+		return true;
+	}
+	
 	onMovementInRange( from_entity )
 	{
 		// Just so we don't have to apply extra accuracy for sdGun-s and sdCharacter-s when they are too far from connected players...
@@ -198,13 +215,16 @@ class sdGun extends sdEntity
 				{
 					from_entity.extra = new_extra;
 					from_entity.sd_filter = sdGun.score_shard_recolor_tiers[ new_extra ];
-					from_entity.ttl = from_entity.ttl + this.ttl;
+					from_entity.ttl = Math.max( from_entity.ttl, this.ttl );
 					
 					if ( this.follow )
 					if ( !this.follow._is_being_removed )
 					{
 						if ( !from_entity.follow || from_entity.follow._is_being_removed )
-						from_entity.follow = this.follow;
+						{
+							from_entity.follow = this.follow;
+							//from_entity.ttl = this.ttl;
+						}
 					}
 					
 					this.remove();
@@ -225,6 +245,13 @@ class sdGun extends sdEntity
 
 				if ( from_entity.is( sdRift ) ) // Ignore portals
 				return;
+				
+				if ( from_entity.is( sdStorage ) ) // Don't damage storage crates
+				{
+					this.dangerous = false;
+					this._dangerous_from = null;
+					return;
+				}
 
 				const is_unknown = ( sdGun.classes[ this.class ] === undefined ); // Detect unknown weapons from LRT teleports
 
@@ -266,7 +293,7 @@ class sdGun extends sdEntity
 					return;
 				}
 
-				if ( !from_entity.IsDamageAllowedByAdmins() )
+				if ( from_entity.IsInSafeArea() )
 				//if ( !sdArea.CheckPointDamageAllowed( from_entity.x + ( from_entity._hitbox_x1 + from_entity._hitbox_x2 ) / 2, from_entity.y + ( from_entity._hitbox_y1 + from_entity._hitbox_y2 ) / 2 ) )
 				{
 					this.dangerous = false;
@@ -302,17 +329,34 @@ class sdGun extends sdEntity
 
 						let mult = 1;
 
-						if ( from_entity.IsPlayerClass() )
+						/*if ( from_entity.IsPlayerClass() )
 						{
-							mult = 1.5;
+							mult = 1.5; // We now have sword throw upgrade
 
 							mult *= from_entity.GetHitDamageMultiplier( this.x, this.y );
 						}
+						*/
+						
+						mult *= from_entity.GetHitDamageMultiplier( this.x, this.y ); // Make weakpoints count
+						
+						if ( this._dangerous_from )
+						{
+							if ( this._dangerous_from.IsPlayerClass() )
+							mult *= this._dangerous_from._sword_throw_mult; // Multiply by sword throw upgrade
+						}
+					
+						if ( this.extra[ 7 ] ) // Has weapon damage multiplier / can be upgraded at weapon bench?
+						mult *= this.extra[ 7 ]; // Apply it
+						
+						let damage = projectile_properties._damage || 1; // Let's start off with this.
+						if ( this.extra[ 17 ] ) // Weapon has "damage" value defined?
+						damage = this.extra[ 17 ]; // Use that value instead, however both projectile_properties._damage and ID_DAMAGE_VALUE should be the same in sdGunClass.
+						// Maybe if we allow weapon merging for swords could make it interesting?
 
 						//if ( this._dangerous_from && this._dangerous_from.is( sdCharacter ) )
 						//from_entity.DamageWithEffect( projectile_properties._damage * this._dangerous_from._damage_mult, this._dangerous_from );
 						//else
-						from_entity.DamageWithEffect( projectile_properties._damage, this._dangerous_from );
+						from_entity.DamageWithEffect( damage * mult, this._dangerous_from );
 
 						this.DamageWithEffect( 1 );
 
@@ -421,7 +465,14 @@ class sdGun extends sdEntity
 	{
 		return sdGun.classes[ this.class ].ammo_capacity_dynamic ? sdGun.classes[ this.class ].ammo_capacity_dynamic( this ) : sdGun.classes[ this.class ].ammo_capacity;
 	}
+	get speciality()
+	{
+		// Assuming it is a crystal shard
+		if ( this.class === sdGun.CLASS_CRYSTAL_SHARD )
+		return this.extra[ 1 ];
 	
+		return 0;
+	}
 	constructor( params )
 	{
 		super( params );
@@ -496,8 +547,19 @@ class sdGun extends sdEntity
 		
 		this.ttl = params.ttl || sdGun.disowned_guns_ttl;
 		
-		let has_class = sdGun.classes[ this.class ];
+		this._access_id = params.access_id || null; // For keycards
 		
+		this.overheat = 0; // Used by minigun-like weapons
+		this._overheat_cooldown = 0;
+		
+		//let has_class = sdGun.classes[ this.class ];
+		this.ResetInheritedGunClassProperties( params );
+		
+		this.SetMethod( 'CollisionFiltering', this.CollisionFiltering ); // Here it used for "this" binding so method can be passed to collision logic
+	}
+	ResetInheritedGunClassProperties( params=null )
+	{
+		let has_class = sdGun.classes[ this.class ];
 		if ( has_class )
 		{
 			this._count = sdGun.classes[ this.class ].count === undefined ? 1 : sdGun.classes[ this.class ].count;
@@ -505,45 +567,44 @@ class sdGun extends sdEntity
 			this._temperature_addition = sdGun.classes[ this.class ].temperature_addition || 0;
 			this._reload_time = sdGun.classes[ this.class ].reload_time || 0;
 			this._is_manual_reload = sdGun.classes[ this.class ]._is_manual_reload || false;
-			
+
 			this._sound = sdGun.classes[ this.class ].sound || null;
 			this._sound_pitch = sdGun.classes[ this.class ].sound_pitch || 1;
-		
+
 			if ( sdGun.classes[ this.class ].hea !== undefined )
 			this._hea = sdGun.classes[ this.class ].hea;
 
+			if ( params )
 			if ( this.class !== sdGun.CLASS_CRYSTAL_SHARD && sdGun.classes[ this.class ].spawnable === false ) // Unbuildable guns have 3 minutes to despawn, enough for players to find them if they lost them
 			this.ttl = params.ttl || sdGun.disowned_guns_ttl * 2;
-		
+
 			if ( has_class.onMade )
 			has_class.onMade( this, params ); // Should not make new entities, assume gun might be instantly removed once made
-		
+
 			this.fire_mode = has_class.fire_type || 1; // Adjust fire mode for the weapon
-			
+
 			if ( this._max_dps === 1 && this.extra[ 17 ] ) // If not overridden by has_class.onMade and it has a damage value
 			{
 				if ( !sdGun.classes[ this.class ].burst )
 				this._max_dps = ( 30 / this._reload_time ) * this.extra[ 17 ] * this._count; // Set it automatically. Should work for most non charge guns, if not all.
 				else // Burst fire gun scenario
 				this._max_dps = ( 30 / ( this._reload_time * sdGun.classes[ this.class ].burst + sdGun.classes[ this.class ].burst_reload ) ) * this.extra[ 17 ] * this._count * sdGun.classes[ this.class ].burst; // Burst fire scenario
-				
+
 				if ( this._max_dps === Infinity )
 				{
 					console.warn( 'Error! ' + sdGun.classes[ this.class ].title + ' does not have max DPS defined properly!' );
 					debugger;
-					
+
 					this._max_dps = 1; // Prevent future bugged infinity damage guns
 				}
-			
+
 				// Should be the correct formulas.
-				
+
 				// WARNING - for special cases like charge weapons and explosive weapons, we should probably test how much damage does a single shot of the weapon deal then probably divide with minimum time between shots.
 				// You have to override _max_dps inside that class inside onMade:(gun, params)
 			}
 			//console.log( sdGun.classes[ this.class ].title + ": " + this._max_dps );
 		}
-
-		this.SetMethod( 'CollisionFiltering', this.CollisionFiltering ); // Here it used for "this" binding so method can be passed to collision logic
 	}
 	
 	CollisionFiltering( from_entity )
@@ -560,6 +621,13 @@ class sdGun extends sdEntity
 		if ( prop === '_sound' ) return true;
 		
 		return false;
+	}
+	getRequiredEntities( observer_character )
+	{
+		if ( this._held_by )
+		return [ this._held_by ];
+		else
+		return [];
 	}
 	IsVisible( observer_character ) // Can be used to hide guns that are held, they will not be synced this way
 	{
@@ -735,12 +803,14 @@ class sdGun extends sdEntity
 			return Infinity;
 		}
 		
+		let mult = ( this.extra[ 20 ] ) ? 0.75 : 1; // Cube fusion core merging reduces weapon matter cost by 25%
+		
 		if ( sdGun.classes[ this.class ].GetAmmoCost )
-		return sdGun.classes[ this.class ].GetAmmoCost( this, shoot_from_scenario );
+		return mult * sdGun.classes[ this.class ].GetAmmoCost( this, shoot_from_scenario );
 	
 		//let dmg_mult = 1;
 		
-		return sdGun.GetProjectileCost( projectile_properties, this._count, this._temperature_addition );
+		return mult * sdGun.GetProjectileCost( projectile_properties, this._count, this._temperature_addition );
 	}
 	
 	static GetProjectileCost( projectile_properties, _count=1, _temperature_addition=0 )
@@ -1142,15 +1212,18 @@ class sdGun extends sdEntity
 							console.warn( report.join(', \n') );
 							throw new Error( report.join(', \n') );
 						}*/
+							
+						let self_recoil_scale = ( sdGun.classes[ this.class ].self_recoil_scale === undefined ) ? 1 : sdGun.classes[ this.class ].self_recoil_scale;
 						
-						bullet_obj._owner.Impulse( -bullet_obj.sx * 0.3 * bullet_obj._knock_scale, -bullet_obj.sy * 0.3 * bullet_obj._knock_scale );
+						bullet_obj._owner.Impulse( -bullet_obj.sx * 0.3 * bullet_obj._knock_scale * self_recoil_scale, -bullet_obj.sy * 0.3 * bullet_obj._knock_scale * self_recoil_scale );
 						
-						bullet_obj._owner._recoil += bullet_obj._knock_scale * vel * 0.02; // 0.01
+						bullet_obj._owner._recoil += bullet_obj._knock_scale * vel * 0.02 * self_recoil_scale; // 0.01
 
 						bullet_obj._bg_shooter = background_shoot ? true : false;
 						
 						if ( bullet_obj._owner.IsPlayerClass() )
 						bullet_obj.time_left *= bullet_obj._owner.s / 100;
+
 
 						if ( sdWorld.is_server )
 						{
@@ -1158,11 +1231,19 @@ class sdGun extends sdEntity
 						}
 						else
 						{
-							bullet_obj.explosion_radius = 0;
-							bullet_obj._hook = false;
-							bullet_obj._return_damage_to_owner = false;
-							bullet_obj.remove();
-							bullet_obj._remove();
+							/*if ( sdWorld.speculative_projectiles && sdWorld.my_entity && bullet_obj._owner === sdWorld.my_entity )
+							{
+								bullet_obj._speculative = true;
+								sdEntity.entities.push( bullet_obj );
+							}
+							else*/
+							{
+								bullet_obj.explosion_radius = 0;
+								bullet_obj._hook = false;
+								bullet_obj._return_damage_to_owner = false;
+								bullet_obj.remove();
+								bullet_obj._remove();
+							}
 						}
 					}
 				}
@@ -1188,7 +1269,7 @@ class sdGun extends sdEntity
 						
 						let offset = this._held_by.GetBulletSpawnOffset();
 
-						let ef = new sdEffect({ x: this._held_by.x + offset.x, y: this._held_by.y + offset.y, type: sdEffect.TYPE_SHELL, sx:Math.sin( an ) * vel, sy:Math.cos( an ) * vel, rotation: Math.PI / 2 - initial_an });
+						let ef = new sdEffect({ x: this._held_by.x + offset.x, y: this._held_by.y + offset.y, type: sdEffect.TYPE_SHELL, sx:Math.sin( an ) * vel + this._held_by.sx / 4, sy:Math.cos( an ) * vel + this._held_by.sy / 4, rotation: Math.PI / 2 - initial_an });
 						sdEntity.entities.push( ef );
 					}
 				}
@@ -1297,7 +1378,6 @@ class sdGun extends sdEntity
 		let GSPEED_unscaled = GSPEED;
 		
 		GSPEED = sdGun.HandleTimeAmplification( this, GSPEED );
-
 		if ( this.ammo_left === -123 )
 		{
 			if ( sdGun.classes[ this.class ].ammo_capacity === undefined )
@@ -1320,6 +1400,15 @@ class sdGun extends sdEntity
 			else
 			this._combo = 0;
 
+			if ( this.overheat > 0 )
+			{
+				let decay_mult = this._overheat_cooldown ? 6 : this.overheat > 200 ? 3 : 0.75;
+				this.overheat = Math.max( 0, this.overheat - GSPEED * decay_mult );
+			}
+			
+			if ( this._overheat_cooldown > 0 )
+			this._overheat_cooldown = Math.max( 0, this._overheat_cooldown - GSPEED );
+		
 			if ( this._held_by )
 			if ( this._held_by._is_being_removed )
 			{
@@ -1495,6 +1584,7 @@ class sdGun extends sdEntity
 		if ( this.reload_time_left <= 0 )
 		if ( this._combo_timer <= 0 )
 		if ( this.muzzle <= 0 )
+		if ( this.overheat <= 0 )
 		{
 			// Always allow sync on weaponbenches automatically
 			if ( !this._held_by.IsPlayerClass() )
@@ -1562,8 +1652,12 @@ class sdGun extends sdEntity
 		
 			// I am making this too complicated - Booraz
 		
-			
-			sdEntity.Tooltip( ctx, this.GetTitle(), 0, xx );
+			let t = this.GetTitle();
+		
+			if ( sdWorld.client_side_censorship && this.title_censored )
+			t = sdWorld.CensoredText( t );
+		
+			sdEntity.Tooltip( ctx, t, 0, xx );
 			xx += 8;
 			if ( has_slot )
 			{
@@ -1585,6 +1679,7 @@ class sdGun extends sdEntity
 		this.UpdateHolderClientSide();
 		
 		let has_class = sdGun.classes[ this.class ];
+		
 		
 		if ( has_class )
 		{
@@ -1638,7 +1733,19 @@ class sdGun extends sdEntity
 				if ( this._held_by === null )
 				ctx.rotate( this.tilt / sdGun.tilt_scale );
 
-				//if ( this.class === sdGun.CLASS_SNIPER || this.class === sdGun.CLASS_RAYGUN || this.class === sdGun.CLASS_PHASERCANNON_P03 || this.class === sdGun.CLASS_ERTHAL_BURST_RIFLE || this.class === sdGun.CLASS_BURST_PISTOL || this.class === sdGun.CLASS_GAUSS_RIFLE || this.class === sdGun.CLASS_ZAPPER || this.class === sdGun.CLASS_KIVORTEC_AVRS_P09 ) // It could probably be separated as a variable declared in sdGunClass to determine if it has reloading animation or not
+				if ( has_class.is_sword )
+				{
+					//if ( this._held_by === null || this._held_by.matter < this.GetBulletCost( true ) )
+					if ( this._held_by === null && !this.dangerous && !sdShop.isDrawing )
+					image = has_class.image_no_matter;
+				}
+				else
+				{
+					if ( this.ammo_left === 0 )
+					if ( has_class.image_no_matter )
+					image = has_class.image_no_matter;
+				}
+
 				if ( has_class.has_images )
 				{
 					let odd = ( this.reload_time_left % 10 ) < 5 ? 0 : 1;
@@ -1652,28 +1759,7 @@ class sdGun extends sdEntity
 					if ( this.reload_time_left > 0 )
 					image = has_class.image2[ odd ];
 				}
-
-				if ( has_class.is_sword )
-				{
-					//if ( this._held_by === null || this._held_by.matter < this.GetBulletCost( true ) )
-					if ( this._held_by === null && !this.dangerous && !sdShop.isDrawing )
-					image = has_class.image_no_matter;
-				}
-				/*
-				if ( this.class === sdGun.CLASS_SWORD )
-				{
-					//if ( this._held_by === null || this._held_by.matter < this.GetBulletCost( true ) )
-					if ( this._held_by === null && !this.dangerous )
-					image = has_class.image_no_matter;
-				}
-
-				if ( this.class === sdGun.CLASS_SABER )
-				{
-					//if ( this._held_by === null || this._held_by.matter < this.GetBulletCost( true ) )
-					if ( this._held_by === null && !this.dangerous )
-					image = has_class.image_no_matter;
-				}*/
-
+				
 				if ( this.ttl >= 0 && this.ttl < 30 )
 				ctx.globalAlpha = 0.5;
 
@@ -1684,33 +1770,16 @@ class sdGun extends sdEntity
 
 				if ( this.class === sdGun.CLASS_CRYSTAL_SHARD )
 				{
-					let v = this.extra / sdWorld.crystal_shard_value * 40;
-					/*if ( v > 40 )
-					ctx.filter = 'hue-rotate(' + ( v - 40 ) + 'deg)';*/
+					let v = this.extra[ 0 ] / sdWorld.crystal_shard_value * 40;
 
 					ctx.filter = sdWorld.GetCrystalHue( v );
+					
+					if ( this.extra[ 1 ] > 0 )
+					{
+						if ( sdCrystal.speciality_table[ v ] && sdCrystal.speciality_table[ v ].GetFilterAltering )
+						ctx.filter = sdCrystal.speciality_table[ v ].GetFilterAltering( this, ctx.filter );
+					}
 				}
-
-				/*if ( this.class === sdGun.CLASS_TRIPLE_RAIL || 
-					 this.class === sdGun.CLASS_RAIL_PISTOL || 
-					 this.class === sdGun.CLASS_RAIL_SHOTGUN || 
-					 this.class === sdGun.CLASS_CUBE_SHARD || 
-					 this.class === sdGun.CLASS_HEALING_RAY || 
-					 this.class === sdGun.CLASS_LOST_CONVERTER ) // Cube weaponry, looked up color wheel since sdFilter is not worth it
-				{
-					if ( this.extra === 1 )
-					{
-						ctx.filter = 'hue-rotate(-120deg) saturate(100) brightness(1.5)'; // yellow
-					}
-					if ( this.extra === 2 )
-					{
-						ctx.filter = 'saturate(0) brightness(1.5)'; // white color
-					}
-					if ( this.extra === 3 )
-					{
-						ctx.filter = 'hue-rotate(120deg)  saturate(100)'; // pink
-					}
-				}*/
 
 				if ( this.class === sdGun.CLASS_BUILDTOOL_UPG )
 				{
@@ -1892,6 +1961,8 @@ class sdGun extends sdEntity
 				{
 					ctx.drawImageFilterCache( image, - 16, - 16, 32,32 );
 				}
+				if ( has_class.ExtraDraw )
+				has_class.ExtraDraw( this, ctx, attached );
 			}
 			
 			ctx.filter = 'none';
@@ -1910,7 +1981,7 @@ class sdGun extends sdEntity
 					ctx.drawImageFilterCache( sdGun.img_muzzle1, muzzle_x - 16, muzzle_y - 16, 32,32 );
 				}*/
 						
-				let yy = 4 - ~~( Math.min( 5, this.muzzle ) / 5 * 5 );
+				let yy = Math.max( 0, 4 - ~~( Math.min( 5, this.muzzle ) / 5 * 5 ) );
 				
 				for ( let xx = 0; xx < 2; xx++ )
 				{
@@ -1936,11 +2007,11 @@ class sdGun extends sdEntity
 						ctx.sd_tint_filter = [ 255 / 255, 216 / 255, 33 / 255 ];
 					}
 					
-					if ( has_class.is_large )
+					/*if ( has_class.is_large )
 					{
 						ctx.drawImageFilterCache( sdGun.img_muzzle_sheet, xx*64,yy*64,64,64, muzzle_x - 32, muzzle_y - 32, 64,64 );
 					}
-					else
+					else*/
 					if ( has_class.is_long )
 					{
 						ctx.drawImageFilterCache( sdGun.img_muzzle_sheet, xx*32,yy*32,32,32, muzzle_x - 25, muzzle_y - 32, 64,64 );
@@ -1948,6 +2019,9 @@ class sdGun extends sdEntity
 					else
 					{
 						ctx.drawImageFilterCache( sdGun.img_muzzle_sheet, xx*32,yy*32,32,32, muzzle_x - 16, muzzle_y - 16, 32,32 );
+						
+						//if ( yy * 32 < 0 || yy * 32 >= 160 )
+						//debugger;
 					}
 					
 					ctx.sd_tint_filter = null;
@@ -1961,7 +2035,7 @@ class sdGun extends sdEntity
 	MeasureMatterCost()
 	{
 		if ( this.class === sdGun.CLASS_CRYSTAL_SHARD )
-		return this.extra;
+		return this.extra && this.extra[ 0 ] || 30;
 	
 		return sdGun.classes[ this.class ].matter_cost || 30;
 	}

@@ -10,6 +10,7 @@ import sdGun from './sdGun.js';
 import sdCrystal from './sdCrystal.js';
 import sdBG from './sdBG.js';
 import sdCharacter from './sdCharacter.js';
+import sdDrone from './sdDrone.js';
 import sdBullet from './sdBullet.js';
 import sdCom from './sdCom.js';
 import sdRift from './sdRift.js';
@@ -23,7 +24,8 @@ class sdSandWorm extends sdEntity
 		sdSandWorm.img_worm_head_attack = sdWorld.CreateImageFromFile( 'worm_head_attack' );
 		sdSandWorm.img_worm_body = sdWorld.CreateImageFromFile( 'worm_body' );
 
-		sdSandWorm.img_worm_spiky_head_idle = sdWorld.CreateImageFromFile( 'worm_spiky_head_idle' ); // Sprite by Gashadokuro for spiky worms
+		// Sprite by Gashadokuro for spiky worms
+		sdSandWorm.img_worm_spiky_head_idle = sdWorld.CreateImageFromFile( 'worm_spiky_head_idle' ); 
 		sdSandWorm.img_worm_spiky_head_attack = sdWorld.CreateImageFromFile( 'worm_spiky_head_attack' );
 		sdSandWorm.img_worm_spiky_body = sdWorld.CreateImageFromFile( 'worm_spiky_body' );
 
@@ -31,8 +33,11 @@ class sdSandWorm extends sdEntity
 		sdSandWorm.img_worm_corrupted_head_attack = sdWorld.CreateImageFromFile( 'worm_corrupted_head_attack' );
 		sdSandWorm.img_worm_corrupted_body = sdWorld.CreateImageFromFile( 'worm_corrupted_body' );
 
-		sdSandWorm.img_worm_council_head_idle = sdWorld.CreateImageFromFile( 'worm_council_head_idle' ); // Council mecha worm or something.
+		// Council mecha worm sprites by 𝔱revoga
+		sdSandWorm.img_worm_council_head_idle = sdWorld.CreateImageFromFile( 'worm_council_head_idle' );
 		sdSandWorm.img_worm_council_head_attack = sdWorld.CreateImageFromFile( 'worm_council_head_attack' );
+		sdSandWorm.img_worm_council_glow = sdWorld.CreateImageFromFile( 'worm_council_glow' );
+		sdSandWorm.img_worm_council_glow_body = sdWorld.CreateImageFromFile( 'worm_council_glow_body' );
 		sdSandWorm.img_worm_council_body = sdWorld.CreateImageFromFile( 'worm_council_body' );
 		
 		sdSandWorm.img_crystal_hunting_worm_head_idle = sdWorld.CreateImageFromFile( 'worm_chunter_head_idle' );
@@ -94,8 +99,16 @@ class sdSandWorm extends sdEntity
 		
 		if ( params.tag )
 		{
-			if ( sdSandWorm[ params.tag ] !== undefined )
+			if ( params.tag === 'corrupted' )
+			params.tag = sdSandWorm.KIND_CORRUPTED_WORM;
+			
+			if ( typeof params.tag === 'string' )
+			//if ( sdSandWorm[ params.tag ] !== undefined )
 			params.kind = sdSandWorm[ params.tag ];
+			else
+			if ( typeof params.tag === 'number' )
+			{
+			}
 			else
 			debugger;
 		}
@@ -106,11 +119,9 @@ class sdSandWorm extends sdEntity
 		this.kind = params.kind || 0;
 		
 		this._ai_team = -1; // Default set to -1
-		
-		let is_corrupted = params.tag === 'corrupted';
 
-		if ( is_corrupted )
-		this.kind = sdSandWorm.KIND_CORRUPTED_WORM;
+		//if ( is_corrupted )
+		//this.kind = sdSandWorm.KIND_CORRUPTED_WORM;
 
 		this.scale = params.scale || Math.max( 0.6, Math.random() * 2 );
 		
@@ -158,6 +169,7 @@ class sdSandWorm extends sdEntity
 		this._last_attack = sdWorld.time;
 		
 		this._last_found_target = 0; // When has it last time found a target? Used for Crystal Hunting Worm.
+		
 		
 		this._hibernation_check_timer = 30;
 		
@@ -286,7 +298,7 @@ class sdSandWorm extends sdEntity
 
 	
 		if ( head_entity !== this && this.kind === sdSandWorm.KIND_COUNCIL_WORM ) // Is this the council worm?
-		dmg = dmg * 0.05; // 95% damage reduction to body damage for council worms, they are sort of a boss after all
+		dmg = dmg * 0.15; // 85% damage reduction to body damage for council worms, they are sort of a boss after all
 		
 		if ( initiator )
 		//if ( !initiator.is( sdSandWorm ) )
@@ -415,7 +427,7 @@ class sdSandWorm extends sdEntity
 
 				}, 500 );
 				
-				if ( this === head_entity && ( ( this.scale >= 1 && Math.random() < 0.02 ) || ( this.scale < 1 && Math.random() < 0.002 ) ) ) // 2% chance for Exalted core, 0.2% if smaller worm
+				if ( this === head_entity && ( ( this.scale >= 1 && Math.random() < 0.03 ) || ( this.scale < 1 && Math.random() < 0.003 ) ) ) // 3% chance for Exalted core, 0.3% if smaller worm
 				setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
 
 				let gun;
@@ -556,6 +568,11 @@ class sdSandWorm extends sdEntity
 	GetIgnoredEntityClasses() // Null or array, will be used during motion if one is done by CanMoveWithoutOverlap or ApplyVelocityAndCollisions
 	{
 		return ( this.death_anim === 0 ) ? sdSandWorm.ignoring : sdSandWorm.ignoring_dead;
+	}
+	
+	get is_alive() // For tasks, also for entities like sdSandWorm to override
+	{
+		return ( this.death_anim === 0 );
 	}
 	
 	onThinkFrozen( GSPEED )
@@ -704,6 +721,7 @@ class sdSandWorm extends sdEntity
 
 					ent.scale = ent_scale;
 					ent.kind = this.kind;
+					ent._ai_team = this._ai_team;
 
 					ent.model = 2;
 
@@ -966,6 +984,7 @@ class sdSandWorm extends sdEntity
 							bullet_obj.time_left = 20;
 
 							bullet_obj._rail = true;
+							bullet_obj._rail_alt = true;
 
 							bullet_obj._damage = 20;
 
@@ -1021,6 +1040,13 @@ class sdSandWorm extends sdEntity
 							if ( this._current_target.is( sdSandWorm ) || ( this._current_target.is( sdCharacter ) && !this.HasEnoughMatter( this._current_target ) ) )
 							this._current_target = null;
 						
+							if ( this._current_target )
+							if ( ( this._current_target.is( sdCharacter ) || this._current_target.is( sdDrone ) ) && this.kind === sdSandWorm.KIND_COUNCIL_WORM ) // Prevent targetting council humanoids if council worm is in question
+							{
+								if ( this._ai_team === this._current_target._ai_team )
+								this._current_target = null;
+							}
+						
 							if ( this._last_found_target > 250 ) // Over 250 attempts without finding a crystal to eat
 							{
 								if ( this.IsEntFarEnough( this ) ) // No players nearby?
@@ -1042,8 +1068,8 @@ class sdSandWorm extends sdEntity
 									this._current_target = this.GetRandomCrystal(); // Focus on finding crystals anyway
 									this._last_found_target++;
 								}
-						}
 							}
+						}
 					}
 				}
 			}
@@ -1076,16 +1102,39 @@ class sdSandWorm extends sdEntity
 					this._hibernation_check_timer = 30 * 30; // Check if hibernation is possible every 30 seconds
 					
 					if ( this.kind === sdSandWorm.KIND_NORMAL_WORM || this.kind === sdSandWorm.KIND_SPIKY_WORM )
-+					this.AttemptBlockBurying(); // Attempt to hibernate inside nearby blocks
+					this.AttemptBlockBurying(); // Attempt to hibernate inside nearby blocks
 					if ( this.kind === sdSandWorm.KIND_CORRUPTED_WORM )
-+					this.AttemptBlockBurying( 'sdSandWorm.corrupted' );
+					this.AttemptBlockBurying( 'sdSandWorm.corrupted' );
 					if ( this.kind === sdSandWorm.KIND_CRYSTAL_HUNTING_WORM )
-+					this.AttemptBlockBurying( 'sdSandWorm.KIND_CRYSTAL_HUNTING_WORM' );
+					this.AttemptBlockBurying( 'sdSandWorm.KIND_CRYSTAL_HUNTING_WORM' );
 				}
 			}
 		}
 		
 		this.ApplyVelocityAndCollisions( GSPEED, 0, true, 1, ( this.death_anim === 0 ) ? this.CustomGroundFiltering : null );
+		/*
+		// Simulating physics by entity that is closest to the head, otherwise it will break violently offscreen // UPD: Does not work
+		let physics_handler = this;
+		while ( true )
+		{
+			if ( physics_handler.towards_head && !physics_handler.towards_head._is_being_removed )
+			physics_handler = physics_handler.towards_head;
+			else
+			break;
+		}
+		if ( physics_handler === this )
+		{
+			//this.ApplyVelocityAndCollisions( GSPEED, 0, true, 1, ( this.death_anim === 0 ) ? this.CustomGroundFiltering : null );
+			while ( true )
+			{
+				physics_handler.ApplyVelocityAndCollisions( GSPEED, 0, true, 1, ( physics_handler.death_anim === 0 ) ? physics_handler.CustomGroundFiltering : null );
+				
+				if ( physics_handler.towards_tail && !physics_handler.towards_tail._is_being_removed )
+				physics_handler = physics_handler.towards_tail;
+				else
+				break;
+			}
+		}*/
 	}
 	CustomGroundFiltering( hit_entity )
 	{
@@ -1106,24 +1155,30 @@ class sdSandWorm extends sdEntity
 		return true;
 
 	}
+	get title()
+	{
+		if ( this.kind === sdSandWorm.KIND_NORMAL_WORM )
+		return "Worm";
+
+		if ( this.kind === sdSandWorm.KIND_SPIKY_WORM )
+		return "Spiky Worm";
+
+		if ( this.kind === sdSandWorm.KIND_CORRUPTED_WORM )
+		return "Corrupted Worm";
+
+		if ( this.kind === sdSandWorm.KIND_COUNCIL_WORM )
+		return "Council Mecha Worm";
+
+		if ( this.kind === sdSandWorm.KIND_CRYSTAL_HUNTING_WORM )
+		return "Crystal Hunting Worm";
+
+		return 'Worm';
+	}
 	DrawHUD( ctx, attached ) // foreground layer
 	{
 		if ( this.death_anim === 0 && ( !this._in_surface || this._in_water ) )
 		{
-			if ( this.kind === sdSandWorm.KIND_NORMAL_WORM )
-			sdEntity.Tooltip( ctx, "Worm" );
-
-			if ( this.kind === sdSandWorm.KIND_SPIKY_WORM )
-			sdEntity.Tooltip( ctx, "Spiky Worm" );
-
-			if ( this.kind === sdSandWorm.KIND_CORRUPTED_WORM )
-			sdEntity.Tooltip( ctx, "Corrupted Worm" );
-
-			if ( this.kind === sdSandWorm.KIND_COUNCIL_WORM )
-			sdEntity.Tooltip( ctx, "Council Mecha Worm" );
-		
-			if ( this.kind === sdSandWorm.KIND_CRYSTAL_HUNTING_WORM )
-			sdEntity.Tooltip( ctx, "Crystal Hunting Worm" );
+			sdEntity.Tooltip( ctx, this.title );
 		}
 	}
 	Draw( ctx, attached )
@@ -1179,16 +1234,44 @@ class sdSandWorm extends sdEntity
 		if ( this.kind === sdSandWorm.KIND_COUNCIL_WORM )
 		{
 			ctx.filter = 'none';
-			if ( this.death_anim === 1 )
-			ctx.filter = 'brightness(0.5)';
+			//if ( this.death_anim === 1 )
+			//ctx.filter = 'brightness(0.5)';
 			ctx.sd_hue_rotation = 0;
-			if ( this.model === 1 /*|| ( this.model === 0 && this._in_surface )*/ )
-			ctx.drawImageFilterCache( sdSandWorm.img_worm_council_head_attack, - 16, - 16, 32,32 );
+			if ( this.model === 1 )
+			{
+				ctx.drawImageFilterCache( sdSandWorm.img_worm_council_head_idle, - 16, - 16, 32,32 );
+			
+				if ( this.death_anim === 0 )
+				{
+					ctx.apply_shading = false; // Glow in the dark
+			
+					ctx.drawImageFilterCache( sdSandWorm.img_worm_council_head_attack, - 16, - 16, 32,32 );
+				}
+				// ctx.drawImageFilterCache( sdSandWorm.img_worm_council_glow, - 16, - 16, 32,32 );
+			}
 			else
 			if ( this.model === 0 )
-			ctx.drawImageFilterCache( sdSandWorm.img_worm_council_head_idle, - 16, - 16, 32,32 );
+			{
+				ctx.drawImageFilterCache( sdSandWorm.img_worm_council_head_idle, - 16, - 16, 32,32 );
+				
+				if ( this.death_anim === 0 )
+				{
+					ctx.apply_shading = false; // Glow in the dark
+			
+					ctx.drawImageFilterCache( sdSandWorm.img_worm_council_glow, - 16, - 16, 32,32 );
+				}
+			}
 			else
-			ctx.drawImageFilterCache( sdSandWorm.img_worm_council_body, - 16, - 16, 32,32 );
+			{
+				ctx.drawImageFilterCache( sdSandWorm.img_worm_council_body, - 16, - 16, 32,32 );
+				
+				if ( this.death_anim === 0 )
+				{
+					ctx.apply_shading = false; // Glow in the dark
+			
+					ctx.drawImageFilterCache( sdSandWorm.img_worm_council_glow_body, - 16, - 16, 32,32 );
+				}
+			}
 		}
 		if ( this.kind === sdSandWorm.KIND_CRYSTAL_HUNTING_WORM )
 		{

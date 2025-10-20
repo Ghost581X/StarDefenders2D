@@ -23,6 +23,7 @@ import sdSandWorm from './sdSandWorm.js';
 import sdFaceCrab from './sdFaceCrab.js';
 import sdCharacterRagdoll from './sdCharacterRagdoll.js';
 import sdStorage from './sdStorage.js';
+import sdEffect from './sdEffect.js';
 
 class sdLost extends sdEntity
 {
@@ -35,7 +36,8 @@ class sdLost extends sdEntity
 			'saturate(0) brightness(2.5)',
 			'none',
 			'saturate(8) contrast(2) brightness(0.2) sepia(1) saturate(20) hue-rotate(-17deg) brightness(0.7)', // Glassed gives a red hue
-			'saturate(8) contrast(0.6) brightness(0.2) sepia(1) saturate(8) hue-rotate(-20deg) brightness(0.8)'
+			'saturate(8) contrast(0.6) brightness(0.2) sepia(1) saturate(8) hue-rotate(-20deg) brightness(0.8)',
+			'saturate(0) brightness(0.5) contrast(2)'
 		];
 		
 		sdLost.FILTER_GOLDEN = 0;
@@ -43,6 +45,7 @@ class sdLost extends sdEntity
 		sdLost.FILTER_NONE = 2;
 		sdLost.FILTER_GLASSED = 3;
 		sdLost.FILTER_RED = 4;
+		sdLost.FILTER_VOID = 5;
 
 		sdWorld.static_think_methods.push( sdLost.StaticThink );
 		
@@ -53,7 +56,7 @@ class sdLost extends sdEntity
 	{
 		let is_dead = ( ( ent.hea || ent._hea || 1 ) <= 0 );
 		
-		if ( ( ent._hard_collision && !ent.is( sdCrystal ) && !( ent.is( sdAsp ) && ent._tier === 2 ) && !ent.is( sdLost ) && ( !ent.is( sdJunk ) || ent.type !== 2 ) ) ||
+		if ( ( ent._hard_collision && !ent.is( sdCrystal ) && !( ent.is( sdAsp ) && ( ent.tier === 2 || ent.tier === 3 ) ) && !ent.is( sdLost ) && ( !ent.is( sdJunk ) || ent.type !== 2 ) ) ||
 			 ( !ent._hard_collision && ( ent.is( sdFaceCrab ) || ( ent.is( sdGun ) && ent.class !== sdGun.CLASS_CRYSTAL_SHARD && ent.class !== sdGun.CLASS_SCORE_SHARD ) || is_dead ) ) ) // Not for BG entities
 		if ( ent._is_bg_entity === 0 ) // Not for BG entities
 		if ( ent.IsTargetable() )
@@ -102,7 +105,7 @@ class sdLost extends sdEntity
 				if ( ent.is( sdMatterAmplifier ) )
 				ent.DropCrystal();
 			
-				if ( ent.is( sdAsp ) && ent._tier === 1 )
+				if ( ent.is( sdAsp ) && ent.tier === 1 )
 				{
 					ent.remove();
 					ent._broken = false;
@@ -276,10 +279,18 @@ class sdLost extends sdEntity
 	/* Causes client-side falling through unsynced ground, probably bad thing to do and it won't be complex entity after sdSnapPack is added
 	get is_static() // Static world objects like walls, creation and destruction events are handled manually. Do this._update_version++ to update these
 	{ return true; }*/
+		
+	IsPhysicallyMovable()
+	{
+		return !this.s;
+	}
 	
 	constructor( params )
 	{
 		super( params );
+		
+		// Carrying
+		this.held_by = null;
 		
 		this.x1 = params.x1 || 0;
 		this.y1 = params.y1 || 0;
@@ -316,6 +327,8 @@ class sdLost extends sdEntity
 		
 		this.awake = 1; // For client sync // Magic property name
 		
+		this._fake_matter_max = 0;
+		
 		//if ( this.s )
 		{
 			this._update_version = 0; // sdEntity constructor won't make this property during snapshot load since it is dynamic
@@ -333,6 +346,13 @@ class sdLost extends sdEntity
 		if ( !sdWorld.is_server )
 		return;
 	
+		if ( this._copy_of_class === 'sdCrystal' )
+		if ( this.held_by )
+		if ( typeof this.held_by.DropCrystal !== 'undefined' )
+		{
+			this.held_by.DropCrystal( this, true );
+		}
+	
 		dmg = Math.abs( dmg );
 		
 		let was_alive = ( this._hea > 0 );
@@ -344,7 +364,7 @@ class sdLost extends sdEntity
 		{
 			if ( was_alive )
 			{
-				if ( this.f === sdLost.FILTER_GOLDEN || this.f === sdLost.FILTER_GLASSED )
+				if ( this.f === sdLost.FILTER_GOLDEN || this.f === sdLost.FILTER_GLASSED || this.f === sdLost.FILTER_VOID )
 				sdSound.PlaySound({ name:'glass12', x:this.x, y:this.y, volume:0.5 });
 					
 				if ( this.f === sdLost.FILTER_GOLDEN )
@@ -372,7 +392,7 @@ class sdLost extends sdEntity
 			{
 				this._last_damage = sdWorld.time;
 				
-				if ( this.f === sdLost.FILTER_GOLDEN || this.f === sdLost.FILTER_GLASSED )
+				if ( this.f === sdLost.FILTER_GOLDEN || this.f === sdLost.FILTER_GLASSED || this.f === sdLost.FILTER_VOID )
 				sdSound.PlaySound({ name:'crystal2_short', x:this.x, y:this.y, volume:1 });
 			}
 		}
@@ -381,19 +401,50 @@ class sdLost extends sdEntity
 	get mass() { return this.m; }
 	Impulse( x, y )
 	{
+		if ( this.held_by )
+		return;
+	
 		this.sx += x / this.mass;
 		this.sy += y / this.mass;
 		//this.sx += x * 0.1;
 		//this.sy += y * 0.1;
 	}
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
+	{
+		if ( this.held_by )
+		return [ this.held_by ]; 
 	
+		return [];
+	}
+	
+	GetBleedEffect()
+	{
+		if ( this.f === sdLost.FILTER_VOID )
+		return sdEffect.TYPE_BLOOD_GREEN;
+	
+		return sdEffect.TYPE_WALL_HIT;
+	}
+
+	GetBleedEffectFilter()
+	{
+		if ( this.f === sdLost.FILTER_VOID )
+		return 'saturate(0) brightness(0)';
+
+		return '';
+	}
 	onThink( GSPEED ) // Class-specific, if needed
 	{
 		this._update_version++;
-		
+
+		if ( this.f === sdLost.FILTER_VOID )
+		{
+			GSPEED *= 0.25;
+		}
+
 		if ( !this.s )
 		{
 			if ( sdWorld.is_server || this.awake )
+			if ( !this.held_by )
 			{
 				this.sy += sdWorld.gravity * GSPEED;
 
@@ -402,7 +453,7 @@ class sdLost extends sdEntity
 
 			//this._matter = Math.min( this._matter_max, this._matter + GSPEED * 0.001 * this._matter_max / 80 );
 			//this.MatterGlow( 0.01, 30, GSPEED );
-			if ( this._phys_sleep <= 0 && this._time_left === -1 )
+			if ( this._phys_sleep <= 0 && this._time_left === -1 && !this.held_by )
 			{
 				if ( sdWorld.is_server )
 				{
@@ -436,14 +487,18 @@ class sdLost extends sdEntity
 	{
 		if ( this.t )
 		{
-			if ( this.f === 0 )
+			if ( this.f === sdLost.FILTER_GOLDEN )
 			sdEntity.Tooltip( ctx, 'Lost ' + this.t );
 			else
-			if ( this.f === 1 )
+			if ( this.f === sdLost.FILTER_WHITE )
 			sdEntity.Tooltip( ctx, 'Empty ' + this.t );
 			else
-			if ( this.f === 3 )
+			if ( this.f === sdLost.FILTER_GLASSED )
 			sdEntity.Tooltip( ctx, 'Glassed ' + this.t );
+			else
+			if ( this.f === sdLost.FILTER_VOID )
+			sdEntity.Tooltip( ctx, 'Void ' + this.t );
+
 			else
 			sdEntity.Tooltip( ctx, this.t );
 		}
@@ -452,40 +507,26 @@ class sdLost extends sdEntity
 	{
 		//ctx.apply_shading = false;
 
-		/*ctx.drawImageFilterCache( sdLost.img_crystal_empty, - 16, - 16, 32,32 );
-		
-		ctx.filter = sdWorld.GetCrystalHue( this._matter_max );
+		if ( this.held_by === null || attached )
+		{
+			if ( typeof this.f === 'number' )
+			ctx.filter = sdLost.filters[ this.f ];
+			else
+			ctx.filter = this.f;
 
-		if ( this._matter_max === sdLost.anticrystal_value )
-		ctx.globalAlpha = 0.8 + Math.sin( sdWorld.time / 3000 ) * 0.1;
-		else
-		ctx.globalAlpha = this._matter / this._matter_max;
-		
-		ctx.drawImageFilterCache( sdLost.img_crystal, - 16, - 16, 32,32 );
-		
-		ctx.globalAlpha = 1;
-		ctx.filter = 'none';*/
-		
-		//ctx.filter = 'contrast(0.8) sepia(1) hue-rotate(10deg) saturate(16)';
-		//ctx.globalAlpha = 0.8;
-		
-		if ( typeof this.f === 'number' )
-		ctx.filter = sdLost.filters[ this.f ];
-		else
-		ctx.filter = this.f;
-	
-		if ( this.f === 0 )
-		ctx.globalAlpha = 0.8;
-		else
-		if ( this.f === 1 )
-		ctx.globalAlpha = 1;
-		else
-		if ( this.f === 3 )
-		ctx.globalAlpha = 1;
-		sdWorld.ApplyDrawOperations( ctx, this.d );
-		
-		ctx.globalAlpha = 1;
-		ctx.filter = 'none';
+			if ( this.f === 0 )
+			ctx.globalAlpha = 0.8;
+			else
+			if ( this.f === 1 )
+			ctx.globalAlpha = 1;
+			else
+			if ( this.f === 3 )
+			ctx.globalAlpha = 1;
+			sdWorld.ApplyDrawOperations( ctx, this.d );
+
+			ctx.globalAlpha = 1;
+			ctx.filter = 'none';
+		}
 	}
 	onRemove() // Class-specific, if needed
 	{

@@ -1,4 +1,6 @@
 
+/* global sdMusic */
+
 import sdWorld from './sdWorld.js';
 import sdEntity from './entities/sdEntity.js';
 import sdWeather from './entities/sdWeather.js';
@@ -6,6 +8,7 @@ import sdWater from './entities/sdWater.js';
 import sdCharacterRagdoll from './entities/sdCharacterRagdoll.js';
 import sdEffect from './entities/sdEffect.js';
 import sdCrystal from './entities/sdCrystal.js';
+import sdSteeringWheel from './entities/sdSteeringWheel.js';
 
 /*
 
@@ -23,17 +26,19 @@ class sdSound
 		
 		if ( !sdWorld.is_server )
 		{
+			sdSound.volume_scale_inactive_window = 0.1;
 
 			sdSound.volume = 0.1; // non-relative
 			sdSound.volume_speech = 0.1; // non-relative // amplitude below 1 (out of 100) is silence in mespeak
 			sdSound.volume_ambient = 0.075; // non-relative
+			sdSound.volume_music = 0.1;
 
 			sdSound.SetVolumeScale = ( v )=>{
 
 				sdSound.volume = v * 1; // non-relative
 				sdSound.volume_speech = v * 1; // non-relative // amplitude below 1 (out of 100) is silence in mespeak
 				sdSound.volume_ambient = v * 0.75; // non-relative
-
+				sdSound.volume_music = v * 0.3; // non-relative
 			};
 
 			//sdSound.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -59,7 +64,10 @@ class sdSound
 				Object.defineProperty( sdSound[ var_name ], 'volume', 
 				{ 
 					set: function ( x ) 
-					{ 
+					{
+						if ( document.hidden )
+						x *= sdSound.volume_scale_inactive_window;
+					
 						sdSound[ var_name + '_howl' ].volume( x, sdSound[ var_name + '_sound_id' ] );
 					},
 					get: function()
@@ -68,17 +76,23 @@ class sdSound
 						return 0;
 					}
 				});
-
+				
+				let last_pitch = 1;
 				Object.defineProperty( sdSound[ var_name ], 'pitch', 
 				{ 
 					set: function ( x ) 
 					{ 
-						sdSound[ var_name + '_howl' ].rate( x, sdSound[ var_name + '_sound_id' ] );
+						if ( last_pitch !== x )
+						{
+							last_pitch = x;
+
+							sdSound[ var_name + '_howl' ].rate( x, sdSound[ var_name + '_sound_id' ] );
+						}
 					},
 					get: function()
 					{
 						debugger; // Won't work
-						return 0;
+						return last_pitch;
 					}
 				});
 			};
@@ -105,6 +119,9 @@ class sdSound
 			MakeLoopAmbient( 'anti_crystal_ambient', './audio/anti_crystal_ambient.wav' );
 			MakeLoopAmbient( 'water_loop', './audio/water.wav' );
 			MakeLoopAmbient( 'antigravity', './audio/antigravity.wav' );
+			MakeLoopAmbient( 'fire_big', './audio/fire_big.wav' );
+			MakeLoopAmbient( 'fire_small', './audio/fire_small.wav' );
+			MakeLoopAmbient( 'motor_loop', './audio/motor_loop.wav' );
 
 
 			sdSound.ambient_seeker = { x:Math.random()*2-1, y:Math.random()*2-1, tx:Math.random()*2-1, ty:Math.random()*2-1 };
@@ -131,6 +148,244 @@ class sdSound
 			//sdSound.matter_charge_sum = 0;
 			//sdSound.matter_decrease_strength = 0;
 			sdSound.matter_target_volume_soft = 0;
+			
+			{
+				sdSound.quit_sounds_str = 
+`abomination_alert
+abomination_attack
+abomination_death
+adoor_start
+adoor_stop
+alien_charge2
+alien_energy_charge1
+alien_energy_charge2
+alien_energy_power_charge1
+alien_energy_power_charge1_fast
+alien_energy_power_charge2
+alien_energy_power_charge2_fast
+alien_energy_power_charge2_fast2
+alien_laser1
+alien_laser2
+antigravity
+anti_crystal_ambient
+armor_break
+armor_pickup
+asteroid
+bad_dog_alert
+bad_dog_attack
+bad_dog_death
+bad_dog_hurt
+bad_dog_retreat
+block4
+blockB4
+bsu_attack
+can_drink
+command_centre
+council_beacon_destruction
+council_death
+council_hurtA
+council_hurtB
+council_teleport
+crystal
+crystal2
+crystal2_short
+crystal_combiner_end
+crystal_combiner_endB
+crystal_combiner_start
+crystal_combiner_startB
+crystal_crab_death
+cube_alert2
+cube_attack
+cube_attackB
+cube_boss_ping
+cube_death
+cube_hurt
+cube_offline
+cube_shard
+cube_teleport
+cut_droid_alert
+cut_droid_attack
+cut_droid_death
+digA
+digB
+digC
+digD
+door_start
+door_stop
+drone_death
+drone_explosion
+earthquake
+enemy_mech_alert
+enemy_mech_attack4
+enemy_mech_charge
+enemy_mech_death3
+enemy_mech_hurt
+enemy_mech_warning
+epic_machine_startup
+erthal_alert
+erthal_death
+erthal_hurt
+evil_alien_charge1
+evil_alien_charge1_fast1
+explosion
+explosion3
+falkok_drone_fire
+fire_big
+fire_detected
+fire_gone
+fire_small
+f_death1
+f_death2
+f_death3
+f_pain2
+f_pain3
+f_pain4
+f_welcome1
+ghost_breath
+ghost_start
+ghost_stop
+glass10
+glass12
+gravity_gun
+guanako_confused
+guanako_death
+guanako_disagreeing
+guanako_hurt
+gun_anti_rifle_fire
+gun_anti_rifle_hit
+gun_buildtool
+gun_buildtool2
+gun_defibrillator
+gun_dmr
+gun_f_rifle
+gun_grenade_launcher
+gun_missile_launcher_p07
+gun_needle
+gun_pistol
+gun_portal4
+gun_psicutter
+gun_psicutter_bounce
+gun_railgun
+gun_railgun_malicestorm_terrorphaser
+gun_railgun_malicestorm_terrorphaser4
+gun_raygun
+gun_rayrifle
+gun_rifle
+gun_rocket
+gun_saw
+gun_shotgun
+gun_shotgun_mk2
+gun_sniper
+gun_spark
+gun_the_ripper
+gun_the_ripper2
+hover_explosion
+hover_lowhp
+hover_start
+kick_blaster
+level_up
+menu_bypass
+menu_click
+menu_hover
+missile_incoming
+mission_complete
+mission_failed
+notificator_alert
+notificator_alertB
+notificator_alertC
+notificator_alertD
+notificator_alertE
+octopus_alert
+octopus_death
+octopus_hurt2
+overlord_cannon3
+overlord_cannon4
+overlord_chatter1
+overlord_chatter2
+overlord_chatter3
+overlord_chatter4
+overlord_chatter5
+overlord_deathB
+overlord_deathC
+overlord_hurtB2
+overlord_hurtC
+overlord_nearby
+overlord_nearbyB
+overlord_spawned
+overlord_welcomeB
+piano_world_startB
+piano_world_startB2_cutA
+player_hit
+player_hit3
+player_step
+player_step_robot
+pop
+popcorn
+portal_through
+powerup_or_exp_pickup
+quickie_alert
+red_railgun
+reload
+reload3
+rescue_teleport_fake_death2
+rift_feed3
+rift_spawn1
+saber_attack
+saber_hit2
+scary_monsters_in_the_dark
+scary_monster_spawned2
+scary_monster_spawned3
+sci_fi_world_start
+score_impact
+sd_beacon
+sd_beacon_disarm
+sd_death
+sd_death2
+sd_hurt1
+sd_hurt2
+sd_welcome
+sd_welcome2
+shield
+shield_turret
+shield_turret_door
+shotgun_blaster
+shurg_turret_attack
+slug_jump
+spider_attackC
+spider_celebrateC
+spider_deathC3
+spider_hurtC
+spider_welcomeC
+supercharge_combined2
+supercharge_combined2_part1
+supercharge_combined2_part2
+sword_attack
+sword_attack2
+sword_bot_alert
+sword_bot_death
+teleport
+teleport_ready
+tentacle_end
+tentacle_start
+turret
+tzyrg_alertC
+tzyrg_death
+tzyrg_deathC2
+tzyrg_fire
+tzyrg_hurt
+tzyrg_hurtC
+virus_alert
+virus_damage2
+water
+water_entrance
+world_hit
+world_hit2
+zektaron_crash
+zektaron_death
+zombie_alert2
+zombie_hurt
+zombie_idle`;
+			}
 		}
 	}
 	static AllowSound()
@@ -139,13 +394,18 @@ class sdSound
 		{
 			sdSound.allowed = true;
 			
+			if ( typeof adConfig !== 'undefined' )
 			adConfig({
-				sound: 'on',
+				sound: 'on'
 			});
+			
+			sdMusic.init_classB();
 		}
 	}
 	static HandleMatterChargeLoop( GSPEED )
 	{
+		let volume_ambient = ( sdRenderer.canvas.style.display === 'block' ) ? sdSound.volume_ambient : 0;
+		
 		let target_volume = 0;
 		
 		if ( sdWorld.my_entity )
@@ -228,15 +488,15 @@ class sdSound
 		for ( var i = 0; i < sdSound.ambients.length; i++ )
 		{
 			var a = sdSound.ambients[ i ];
-			//a.audio.volume = a.di / di_sum * sdSound.volume_ambient * ( 1 - rain_intens );
-			a.audio.volume = a.di / di_sum * sdSound.volume_ambient * ( 1 - rain_intens ) * Math.max( 0, 1 - sdWorld.Dist2D( sdSound.ambient_seeker.x, sdSound.ambient_seeker.y, a.x, a.y ) ); // More silence
+			//a.audio.volume = a.di / di_sum * volume_ambient * ( 1 - rain_intens );
+			a.audio.volume = a.di / di_sum * volume_ambient * ( 1 - rain_intens ) * Math.max( 0, 1 - sdWorld.Dist2D( sdSound.ambient_seeker.x, sdSound.ambient_seeker.y, a.x, a.y ) ); // More silence
 		}
 		
-		sdSound.rain_low_res.volume = rain_intens * sdSound.volume_ambient;
-		//sdSound.rain_low_res.volume = rain_intens * sdSound.volume_ambient;
+		sdSound.rain_low_res.volume = rain_intens * volume_ambient;
+		//sdSound.rain_low_res.volume = rain_intens * volume_ambient;
 		
-		sdSound.earthquake.volume = earthquake_intens * sdSound.volume_ambient;
-		//sdSound.earthquake.volume = earthquake_intens * sdSound.volume_ambient;
+		sdSound.earthquake.volume = earthquake_intens * volume_ambient;
+		//sdSound.earthquake.volume = earthquake_intens * volume_ambient;
 		
 		let count_flying = 0;
 		let count_hover_loop = 0;
@@ -247,6 +507,8 @@ class sdSound
 		let count_anti_crystal_ambient = 0;
 		let count_water_loop = 0;
 		let count_antigravity = 0;
+		let count_fire = 0;
+		let count_motor = 0;
 		
 		// Singleplayer entities array is huge and will damage performance there otherwise
 		const entities_array = sdWorld.is_singleplayer ? sdRenderer.single_player_visibles_array : sdEntity.entities;
@@ -258,43 +520,37 @@ class sdSound
 			const e = entities_array[ i ];
 			
 			if ( !sdWorld.is_server || sdWorld.inDist2D_Boolean( e.x, e.y, sdWorld.camera.x, sdWorld.camera.y, 1000 ) )
-			//if ( !e.is( sdCharacterRagdoll.sdBone ) )
-			//if ( !e.is( sdEffect ) )
+		
 			switch ( e.GetClass() )
 			{
-				//if ( e.GetClass() === 'sdCharacter' )
 				case 'sdCharacter':
 				{
 					if ( e.flying )
 					count_flying += 1 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdHover' )
+				
 				case 'sdHover':
 				{
 					if ( e.driver0 && e.matter > 1 /*&& ( e.driver0.act_x !== 0 || e.driver0.act_y !== 0 )*/ )
 					count_hover_loop += 2 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdThruster' )
+				
 				case 'sdThruster':
 				{
 					if ( e.enabled )
 					count_hover_loop += 1 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdMatterAmplifier' )
+				
 				case 'sdMatterAmplifier':
 				{
 					if ( e.matter_max > 0 || e.crystal )
 					count_amplifier_loop += 0.2 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdAntigravity' )
+				
 				case 'sdAntigravity':
 				{
 					if ( e.power > 0 )
@@ -302,8 +558,7 @@ class sdSound
 					count_antigravity += 0.2 * e.power * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdWater' )
+				
 				case 'sdWater':
 				{
 					if ( e.type === sdWater.TYPE_ACID || e.type === sdWater.TYPE_WATER )
@@ -324,23 +579,20 @@ class sdSound
 					}
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdRift' )
+				
 				case 'sdRift':
 				{
 					count_rift_loop += 2.5 * e.scale * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdJunk' && e.type === 3 )
+				
 				case 'sdJunk':
 				{
 					if ( e.type === 3 )
 					count_anti_crystal_ambient += 1 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
-				//else
-				//if ( e.GetClass() === 'sdCrystal' )
+				
 				case 'sdCrystal':
 				{
 					if ( e.type === sdCrystal.TYPE_CRYSTAL_BIG || e.type === sdCrystal.TYPE_CRYSTAL_CRAB_BIG)
@@ -353,23 +605,58 @@ class sdSound
 					count_anti_crystal_ambient += 0.1 * sdSound.GetDistanceMultForPosition( e.x, e.y );
 				}
 				break;
+				
+				case 'sdEffect':
+				{
+					if ( e._type === sdEffect.TYPE_FIRE )
+					count_fire += 0.05 * sdSound.GetDistanceMultForPosition( e.x, e.y );
+				}
+				break;
+				
+				case 'sdSteeringWheel':
+				{
+					if ( e.type === sdSteeringWheel.TYPE_ELEVATOR_MOTOR )
+					if ( e.toggle_enabled )
+					count_motor += 1 * sdSound.GetDistanceMultForPosition( e.x, e.y );
+				}
+				break;
 			}
 		}
 		
+		let count_fire_big = 0;
+		let count_fire_small = 0;
+
+		if ( count_fire > 0.9 )
+		count_fire = 0.9;
+		
+		let morph = Math.min( 1, count_fire / 0.2 );
+		
+		count_fire_big = count_fire * morph;
+		count_fire_small = count_fire * ( 1 - morph );
+		
 		sdSound.jetpack_volume_last = sdWorld.MorphWithTimeScale( sdSound.jetpack_volume_last, count_flying, 0.8, GSPEED );
-		sdSound.jetpack.volume = Math.min( 1, sdSound.jetpack_volume_last * sdSound.volume_ambient );
+		sdSound.jetpack.volume = Math.min( 1, sdSound.jetpack_volume_last * volume_ambient );
 		
 		sdSound.hover_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.hover_loop_volume_last, count_hover_loop, 0.8, GSPEED );
-		sdSound.hover_loop.volume = Math.min( 1, sdSound.hover_loop_volume_last * sdSound.volume_ambient );
+		sdSound.hover_loop.volume = Math.min( 1, sdSound.hover_loop_volume_last * volume_ambient );
 		
 		sdSound.amplifier_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.amplifier_loop_volume_last, count_amplifier_loop, 0.8, GSPEED );
-		sdSound.amplifier_loop.volume = Math.min( 1, Math.min( 1.25, sdSound.amplifier_loop_volume_last ) * sdSound.volume_ambient );
+		sdSound.amplifier_loop.volume = Math.min( 1, Math.min( 1.25, sdSound.amplifier_loop_volume_last ) * volume_ambient );
 		
 		sdSound.antigravity_volume_last = sdWorld.MorphWithTimeScale( sdSound.antigravity_volume_last, count_antigravity, 0.8, GSPEED );
-		sdSound.antigravity.volume = Math.min( 1, Math.min( 1.25, sdSound.antigravity_volume_last ) * sdSound.volume_ambient );
+		sdSound.antigravity.volume = Math.min( 1, Math.min( 1.25, sdSound.antigravity_volume_last ) * volume_ambient );
 		
 		sdSound.lava_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.lava_loop_volume_last, count_lava_loop, 0.8, GSPEED );
-		sdSound.lava_loop.volume = Math.min( 1, Math.min( 1.5, sdSound.lava_loop_volume_last ) * sdSound.volume_ambient );
+		sdSound.lava_loop.volume = Math.min( 1, Math.min( 1.5, sdSound.lava_loop_volume_last ) * volume_ambient );
+		
+		sdSound.fire_big_volume_last = sdWorld.MorphWithTimeScale( sdSound.fire_big_volume_last, count_fire_big, 0.8, GSPEED );
+		sdSound.fire_big.volume = Math.min( 1, Math.min( 1.5, sdSound.fire_big_volume_last ) * volume_ambient );
+		
+		sdSound.fire_big_volume_last = sdWorld.MorphWithTimeScale( sdSound.fire_big_volume_last, count_fire_small, 0.8, GSPEED );
+		sdSound.fire_big.volume = Math.min( 1, Math.min( 1.5, sdSound.fire_big_volume_last ) * volume_ambient );
+		
+		sdSound.motor_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.motor_loop_volume_last, count_motor, 0.8, GSPEED );
+		sdSound.motor_loop.volume = Math.min( 1, Math.min( 1.5, sdSound.motor_loop_volume_last ) * volume_ambient );
 		
 		if ( sdWorld.my_entity )
 		{
@@ -384,18 +671,18 @@ class sdSound
 		
 		count_water_loop = Math.max( 0, count_water_loop - ( 0.5 + Math.sin( sdWorld.time / 10000 ) * 0.5 ) * 0.05 );
 		sdSound.water_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.water_loop_volume_last, count_water_loop, 0.8, GSPEED );
-		sdSound.water_loop.volume = Math.min( 1, Math.min( 1.5, sdSound.water_loop_volume_last ) * sdSound.volume_ambient );
+		sdSound.water_loop.volume = Math.min( 1, Math.min( 1.5, sdSound.water_loop_volume_last ) * volume_ambient );
 		
 		
 		
 		sdSound.lava_burn_volume_last = sdWorld.MorphWithTimeScale( sdSound.lava_burn_volume_last, count_lava_burn, 0.8, GSPEED );
-		sdSound.lava_burn.volume = Math.min( 1, Math.min( 2, sdSound.lava_burn_volume_last ) * sdSound.volume_ambient );
+		sdSound.lava_burn.volume = Math.min( 1, Math.min( 2, sdSound.lava_burn_volume_last ) * volume_ambient );
 		
 		sdSound.rift_loop_volume_last = sdWorld.MorphWithTimeScale( sdSound.rift_loop_volume_last, count_rift_loop, 0.8, GSPEED );
-		sdSound.rift_loop.volume = Math.min( 1, Math.min( 10, sdSound.rift_loop_volume_last ) * sdSound.volume_ambient );
+		sdSound.rift_loop.volume = Math.min( 1, Math.min( 10, sdSound.rift_loop_volume_last ) * volume_ambient );
 		
 		sdSound.anti_crystal_ambient_volume_last = sdWorld.MorphWithTimeScale( sdSound.anti_crystal_ambient_volume_last, count_anti_crystal_ambient, 0.8, GSPEED );
-		sdSound.anti_crystal_ambient.volume = Math.min( 1, Math.min( 10, sdSound.anti_crystal_ambient_volume_last ) * sdSound.volume_ambient );
+		sdSound.anti_crystal_ambient.volume = Math.min( 1, Math.min( 10, sdSound.anti_crystal_ambient_volume_last ) * volume_ambient );
 		
 		
 		// Note: Never go over 1 on .volume - browsers will throw an error and freeze screen
@@ -404,8 +691,9 @@ class sdSound
 	{
 		let di = sdWorld.Dist2D( sdWorld.camera.x, sdWorld.camera.y, x, y );
 		
-		//return Math.max( 0.2, Math.pow( Math.max( 0, 400 - di ) / 400, 0.5 ) );
-		return Math.max( 0.05, Math.pow( Math.max( 0, 400 - di ) / 400, 0.5 ) );
+		//return Math.max( 0.05, Math.pow( Math.max( 0, 400 - di ) / 400, 0.5 ) );
+		
+		return Math.max( 0.01, 200 / ( 200 + di ) );
 	}
 	static CreateSoundChannel( for_entity )
 	{
@@ -534,7 +822,8 @@ class sdSound
 				sdSound.sounds_played_at_frame++;
 				if ( sdSound.sounds_played_at_frame > 10 )
 				{
-					console.log('Too many sounds played within short timespan. Is limit correct?');
+					//console.log('Too many sounds played within short timespan. Is limit correct?', name, globalThis.getStackTrace() );
+					console.log('Too many sounds played within short timespan. Is limit correct?' );
 					return;
 				}
 				
@@ -547,6 +836,9 @@ class sdSound
 				clone.play();*/
 				
 				let howl = sdSound.sounds[ name ];
+				
+				if ( document.hidden )
+				v *= sdSound.volume_scale_inactive_window;
 				
 				howl.volume( v );
 				howl.rate( rate );
@@ -563,6 +855,15 @@ class sdSound
 				
 			}
 		}
+	}
+	
+	static PlayUISound( params ) // It is more of a hack than anything
+	{
+		params._server_allowed = true;
+		params.x = sdWorld.camera.x;
+		params.y = sdWorld.camera.y;
+		
+		sdSound.PlaySound( params );
 	}
 }
 export default sdSound;

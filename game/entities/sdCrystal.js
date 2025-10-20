@@ -14,6 +14,11 @@ import sdGrass from './sdGrass.js';
 import sdGuanako from './sdGuanako.js';
 import sdStatusEffect from './sdStatusEffect.js';
 import sdCharacter from './sdCharacter.js';
+import sdTimer from './sdTimer.js';
+import sdLost from './sdLost.js';
+import sdWeather from './sdWeather.js';
+import sdAsp from './sdAsp.js';
+import sdRift from './sdRift.js';
 
 
 class sdCrystal extends sdEntity
@@ -46,7 +51,8 @@ class sdCrystal extends sdEntity
 		
 		sdCrystal.anticrystal_value = 5120 * 16; // 10240;
 		
-		sdCrystal.max_matter_regen = 400;
+		sdCrystal.max_matter_regen = 400; // Use crystal.max_matter_regen instead
+		sdCrystal.max_anti_matter_regen = 100;
 		
 		sdCrystal.TYPE_CRYSTAL = 1;
 		sdCrystal.TYPE_CRYSTAL_BIG = 2;
@@ -67,11 +73,15 @@ class sdCrystal extends sdEntity
 		
 		sdCrystal.ignored_classes_array = [ 'sdLifeBox' ];
 		
-		sdCrystal.spaciality_table = [];
-		sdCrystal.spaciality_table[ 40 ] = {
+		sdCrystal.speciality_table = [];
+		sdCrystal.speciality_table[ 40 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
 				return 'Mitosis ' + base_title.toLowerCase();
+			
+				return 'Genesis ' + base_title.toLowerCase();
 			},
 			
 			onThink: ( e, GSPEED )=>
@@ -87,12 +97,50 @@ class sdCrystal extends sdEntity
 					{
 						e._private_props.dupe_timer = 0;
 
-						e.DamageWithEffect( 30 );
+						e._last_damage = sdWorld.time; // Mute
+						e.DamageWithEffect( ( e.speciality === 2 ) ? 60 : 30 );
 						if ( e._is_being_removed )
 						//if ( Math.random() < 0.5 )
 						{
-							let a = new sdCrystal({ x:e.x, y:e.y, matter_max: e.matter_max, type: e.type, matter_regen: e.matter_regen, speciality: ( Math.random() < 0.48 ) ? 1 : 0 });
-							let b = new sdCrystal({ x:e.x, y:e.y, matter_max: e.matter_max, type: e.type, matter_regen: e.matter_regen, speciality: ( Math.random() < 0.48 ) ? 1 : 0 });
+							let GetNewType = ()=>
+							{
+								if ( e.speciality === 2 )
+								if ( Math.random() < 0.333 )
+								{
+									if ( e.type === sdCrystal.TYPE_CRYSTAL || 
+										 e.type === sdCrystal.TYPE_CRYSTAL_CORRUPTED || 
+										 e.type === sdCrystal.TYPE_CRYSTAL_ARTIFICIAL || 
+										 e.type === sdCrystal.TYPE_CRYSTAL_BALLOON )
+									return sdCrystal.TYPE_CRYSTAL_CRAB;
+								
+									if ( e.type === sdCrystal.TYPE_CRYSTAL_CRAB )
+									return sdCrystal.TYPE_CRYSTAL_CRAB_BIG;
+								
+									if ( e.type === sdCrystal.TYPE_CRYSTAL_BIG )
+									return sdCrystal.TYPE_CRYSTAL_CRAB_BIG;
+								}
+
+								return e.type;
+							};
+							let GetNewSpeciality = ()=>
+							{
+								if ( e.speciality === 2 )
+								return ( Math.random() < 0.45 ) ? 2 : 1;
+									
+								return ( Math.random() < 0.45 ) ? 1 : 0;
+							};
+							
+							let a = new sdCrystal({ x:e.x, y:e.y, matter_max: e.matter_max, type: GetNewType(), matter_regen: e.matter_regen, speciality: GetNewSpeciality() });
+							let b = new sdCrystal({ x:e.x, y:e.y, matter_max: e.matter_max, type: GetNewType(), matter_regen: e.matter_regen, speciality: GetNewSpeciality() });
+							
+							if ( !e.is_big )
+							if ( a.is_big )
+							a.matter_max = a.matter = a.matter_max *= 4;
+					
+							if ( !e.is_big )
+							if ( b.is_big )
+							b.matter_max = b.matter = b.matter_max *= 4;
+							
 							a.sx = e.sx;
 							a.sy = e.sy;
 							b.sx = e.sx;
@@ -110,16 +158,6 @@ class sdCrystal extends sdEntity
 								let xx = Math.sin( an ) * r;
 								let yy = Math.cos( an ) * r;
 
-								/*if ( Math.abs( xx ) > Math.abs( yy ) )
-								{
-									a.x = e.x - a._hitbox_x1;
-									b.x = e.x - b._hitbox_x2;
-								}
-								else
-								{
-									a.y = e.y - a._hitbox_y1;
-									b.y = e.y - b._hitbox_y2;
-								}*/
 								
 								if ( !okA )
 								if ( a.CanMoveWithoutOverlap( e.x-xx, e.y-yy, 0 ) )
@@ -127,6 +165,7 @@ class sdCrystal extends sdEntity
 									sdCrystal.Zap( e, a, '#aaffaa' );
 									a.x = e.x-xx;
 									a.y = e.y-yy;
+									
 									sdWorld.UpdateHashPosition( a, false );
 									okA = true;
 								}
@@ -160,7 +199,10 @@ class sdCrystal extends sdEntity
 			},
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'hue-rotate(-20deg)brightness(1.5)saturate(0.25)';
+			
+				return ctx_filter + 'hue-rotate(-40deg)brightness(1.5)saturate(0.5)drop-shadow(0px 0px 5px #aaffaa)';
 			},
 			onDraw: ( e, ctx, attached )=>
 			{
@@ -191,10 +233,14 @@ class sdCrystal extends sdEntity
 				ctx.globalAlpha = 1;
 			}
 		};
-		sdCrystal.spaciality_table[ 80 ] = {
+		sdCrystal.speciality_table[ 80 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
 				return 'Company-powered ' + base_title.toLowerCase();
+			
+				return 'Resonance ' + base_title.toLowerCase();
 			},
 			
 			//onThink: ( e, GSPEED )=>
@@ -213,11 +259,25 @@ class sdCrystal extends sdEntity
 					if ( e2.is( sdCrystal ) )
 					if ( e2.GetTier() * 40 === 80 )
 					{
-						if ( e2.speciality < 1 )
+						if ( e.speciality === 2 )
+						if ( e.speciality === e2.speciality )
+						if ( e.matter_regen + e2.matter_regen <= e.max_matter_regen )
+						if ( e._net_id < e2._net_id )
+						if ( !e._is_being_removed )
+						if ( !e2._is_being_removed )
+						{
+							e2.remove();
+							sdCrystal.Zap( e, e2, '#aaffff' );
+							e.matter_regen = e.matter_regen + e2.matter_regen;
+							sdSound.PlaySound({ name:'bsu_attack', x:e.x, y:e.y, volume:0.1, pitch:8 });
+							break;
+						}
+						
+						if ( e2.speciality < e.speciality )
 						if ( !e2.is_very_depleted )
 						{
-							e2.speciality = 1;
-							sdCrystal.Zap( e, e2, '#aafffff' );
+							e2.speciality = Math.min( e2.speciality + 1, e.speciality );
+							sdCrystal.Zap( e, e2, '#aaffff' );
 						}
 					
 						friends++;
@@ -227,6 +287,11 @@ class sdCrystal extends sdEntity
 					}
 				}
 				
+				if ( e.speciality === 2 )
+				{
+					e.ApplyStatusEffect({ type: sdStatusEffect.TYPE_TIME_AMPLIFICATION, t: 90 });
+					return GSPEED_scaled * 8 * 10;
+				}
 				
 				if ( friends > 0 )
 				e.ApplyStatusEffect({ type: sdStatusEffect.TYPE_TIME_AMPLIFICATION, t: 90 });
@@ -235,43 +300,117 @@ class sdCrystal extends sdEntity
 			},
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'brightness(1.5)saturate(2)';
+			
+				return ctx_filter + 'brightness(0.85)contrast(1.5)saturate(2)drop-shadow(0px 0px 5px #aaaaff)';
 			}
 		};
-		sdCrystal.spaciality_table[ 160 ] = {
+		sdCrystal.speciality_table[ 160 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
 				return 'Explosive ' + base_title.toLowerCase();
+			
+				return 'Rupture ' + base_title.toLowerCase();
 			},
 			
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'hue-rotate(-32deg)brightness(0.7)contrast(1.9)saturate(1.5)';
+			
+				return ctx_filter + 'hue-rotate(-22deg)brightness(0.8)contrast(1.6)saturate(1.5)drop-shadow(0px 0px 5px #ffaaff)';
 			},
 			
 			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
 			{
 				if ( e._hea <= 0 && was_alive )
-				sdWorld.SendEffect({ 
-					x:e.x, 
-					y:e.y, 
-					radius:35, // 80 was too much?
-					damage_scale: 3, // 5 was too deadly on relatively far range
-					type:sdEffect.TYPE_EXPLOSION, 
-					owner:initiator,
-					color:'#a352ff' 
-				});
+				{
+					sdWorld.SendEffect({ 
+						x:e.x, 
+						y:e.y, 
+						radius: ( e.speciality === 1 ) ? 35 : 70,
+						damage_scale: ( e.speciality === 1 ) ? 3 : 6,
+						type:sdEffect.TYPE_EXPLOSION, 
+						owner:initiator,
+						color:'#a352ff' 
+					});
+					
+					if ( e.speciality === 2 )
+					{
+						// Let explosion happen first?
+						setTimeout( ()=>
+						{
+							for ( let xx = 0; xx < 2; xx++ )
+							for ( let yy = 0; yy < 2; yy++ )
+							{
+								let ent = new sdCrystal({ 
+									x: e.x, 
+									y: e.y + e.hitbox_y2, 
+									sx: e.sx, 
+									sy: e.sy, 
+									type: e.type,
+									matter_max: e.matter_max,
+									matter_regen: Math.min( e.matter_regen * 2, e.max_matter_regen ),
+									speciality: e.speciality - 1
+								});
+
+								ent.sx += ( xx - 1 ) * 2.5;
+								ent.sy += ( yy - 1 ) * 2.5;
+
+								ent.y -= ent.hitbox_y2 + 0.1;
+
+								if ( xx === 0 )
+								ent.x -= ent.hitbox_x2 + 0.1;
+								else
+								ent.x -= ent.hitbox_x1 - 0.1;
+
+								if ( yy === 0 )
+								ent.y += ent.hitbox_y1 - ent.hitbox_y2 - 0.1;
+
+								sdEntity.entities.push( ent );
+								sdWorld.UpdateHashPosition( ent, false ); // Optional, but will make it visible as early as possible
+
+								if ( !ent.CanMoveWithoutOverlap( ent.x, ent.y, 0 ) )
+								{
+									ent.x = e.x;
+									ent.y = e.y;
+								}
+							}
+							
+							sdEntity.Create( sdRift, { type:sdRift.TYPE_CRYSTALLIZED_PORTAL, x:e.x, y:e.y } );
+							
+						}, 64 );
+					}
+				}
 			}
 		};
-		sdCrystal.spaciality_table[ 320 ] = {
+		sdCrystal.speciality_table[ 320 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
 				return 'Jello ' + base_title.toLowerCase();
+			
+				return 'Regellium ' + base_title.toLowerCase();
+			},
+			
+			GetMaxMatterRegen: ( e )=>
+			{
+				return sdCrystal.max_matter_regen * 256; // Max capacity equal to overcharged anti?
 			},
 			
 			ImpactAltering: ( e, vel )=>
 			{
-				return vel * 0.1;
+				vel *= 0.075;
+				e._bounce_anim = Math.min( 0.5, vel );
+
+				if ( vel > 0.5 )
+				sdSound.PlaySound({ name:'slug_jump', x:e.x, y:e.y, volume: 1 / 3 });
+
+				return vel;
 			},
 			
 			BouncinessAltering: ( e )=>
@@ -290,48 +429,96 @@ class sdCrystal extends sdEntity
 			
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'hue-rotate(10deg)contrast(0.3)brightness(1.2)saturate(0.7)contrast(4)';
-			}
-		};
-		sdCrystal.spaciality_table[ 640 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
-				return 'Damage-charged ' + base_title.toLowerCase();
+				if ( e.matter_regen >= 1600 ) // Behaves like 5120 crystal at this regen rate
+				return ctx_filter + 'hue-rotate(-90deg)contrast(0.3)brightness(1.2)saturate(0.7)contrast(4)drop-shadow(0px 0px 5px #ffffaa)';
+				else
+				return ctx_filter + 'hue-rotate(-90deg)contrast(0.3)brightness(1.2)saturate(0.7)contrast(4)';
+			
+				//return ctx_filter + 'hue-rotate(-50deg)contrast(0.3)brightness(1.2)saturate(0.7)contrast(4)';
 			},
 			
-			GetFilterAltering: ( e, ctx_filter )=>
+			onDraw: ( e, ctx, attached )=>
 			{
-				return ctx_filter + 'hue-rotate(-20deg)brightness(0.85)saturate(1.6)contrast(2)drop-shadow(0px 0px 1px #ff0000)';
+				ctx.scale( 1 + e._bounce_anim / 2, 1 - e._bounce_anim );
+				e._DefaultDraw( ctx, attached );
 			},
 			
 			onThink: ( e, GSPEED )=>
 			{
-				e.matter_regen = Math.max( 0, e.matter_regen - GSPEED * 0.01 );
-			},
-			
-			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
-			{
-				if ( e._hea > 0 )
-				{
-					let damage_to_consume = sdCrystal.max_matter_regen - e.matter_regen;
-					
-					e._hea += Math.min( damage_to_consume, dmg );
-					
-					e.matter_regen = Math.min( sdCrystal.max_matter_regen, e.matter_regen + dmg );
-				}
+				e._bounce_anim = Math.max( 0, e._bounce_anim - GSPEED * 0.15 );
 			}
-			
 		};
-		sdCrystal.spaciality_table[ 1280 ] = {
+		sdCrystal.speciality_table[ 640 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
-				return 'Zap-charged ' + base_title.toLowerCase();
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
+				return 'Damage-charged ' + base_title.toLowerCase();
+			
+				return 'Painite ' + base_title.toLowerCase();
 			},
 			
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
-				//return ctx_filter + 'hue-rotate(-80deg)saturate(1)brightness(2)drop-shadow(0px 0px 1px #aaaaff)';
+				if ( e.speciality === 1 )
+				return ctx_filter + 'hue-rotate(-20deg)brightness(0.85)saturate(1.6)contrast(2)drop-shadow(0px 0px 1px #ff0000)';
+			
+				return ctx_filter + 'hue-rotate(-50deg)brightness(0.55)contrast(1.7)saturate(1.2)drop-shadow(0px 0px 1px #ff0000)drop-shadow(0px 0px 5px #ff666666)';
+			},
+			
+			onThink: ( e, GSPEED )=>
+			{
+				if ( e.speciality === 1 ) // Tier 2 does not lose regen overtime
+				e.matter_regen = Math.max( 0, e.matter_regen - GSPEED * 0.01 );
+			},
+			
+			GetMaxMatterRegen: ( e )=>
+			{
+				if ( e.speciality === 2 )
+				return sdCrystal.max_matter_regen * 2; // Double max matter capacity than usual
+			
+				return sdCrystal.max_matter_regen;
+			},
+			
+			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
+			{
+				// Take less damage
+				if ( e.speciality === 2 )
+				{
+					e._hea = Math.min( e._hmax, e._hea + dmg * 0.9 );
+					dmg *= 0.1;
+				}
+				
+				if ( e._hea > 0 )
+				{
+					let damage_to_consume = e.max_matter_regen - e.matter_regen;
+					
+					e._hea += Math.min( damage_to_consume, dmg );
+					
+					e.matter_regen = Math.min( e.max_matter_regen, e.matter_regen + dmg );
+				}
+			}
+			
+		};
+		sdCrystal.speciality_table[ 1280 ] = {
+			
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
+				return 'Zap-charged ' + base_title.toLowerCase();
+			
+				return 'Drainite ' + base_title.toLowerCase();
+			},
+			
+			GetFilterAltering: ( e, ctx_filter )=>
+			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'hue-rotate(-95deg)saturate(1)brightness(2)drop-shadow(0px 0px 1px #aaddff)';
+				
+				return ctx_filter + 'hue-rotate(-80deg)saturate(1)brightness(1.5)drop-shadow(0px 0px 1px #aaaaff)';
 			},
 			
 			onThink: ( e, GSPEED )=>
@@ -347,85 +534,141 @@ class sdCrystal extends sdEntity
 						
 						if ( e._anything_near )
 						{
-							let matter_demand = Math.min( e.matter_max - e.matter, e.matter_max * 0.1 );
-
-							let play_sound = 0;
-
-							for ( let i = 0; i < e._anything_near.length; i++ )
+							if ( e.speciality === 1 )
 							{
-								let e2 = e._anything_near[ i ];
+								let matter_demand = Math.min( e.matter_max - e.matter, e.matter_max * 0.1 );
 
-								if ( e2.IsTargetable( e ) )
-								{
-									let old_matter = ( e2.matter || e2._matter || 0 );
-									if ( old_matter >= matter_demand && old_matter > 20 )
-									{
-										e2.TransferMatter( e, matter_demand, 1, true );
-										
-										let new_matter = ( e2.matter || e2._matter || 0 );
-										
-										if ( old_matter !== new_matter )
-										{
-											sdCrystal.Zap( e, e2, '#aaddff' );
-											play_sound = 1;
-										}
-										
-										matter_demand -= ( old_matter - new_matter );
-										
-										if ( matter_demand <= 0 )
-										break;
-									}
-								}
-							}
-						
-							if ( matter_demand > 0 )
-							{
+								let play_sound = 0;
+
 								for ( let i = 0; i < e._anything_near.length; i++ )
 								{
 									let e2 = e._anything_near[ i ];
-									
+
 									if ( e2.IsTargetable( e ) )
 									{
-										let old_hp = ( e2.hea || e2._hea || 0 );
-
-										e2.DamageWithEffect( 40, e, false, false );
-
-										let new_hp = ( e2.hea || e2._hea || 0 );
-
-										if ( old_hp !== new_hp )
+										let old_matter = ( e2.matter || e2._matter || 0 );
+										if ( old_matter >= matter_demand && old_matter > 20 )
 										{
-											sdCrystal.Zap( e, e2, '#ffaa00' );
-											play_sound = 2;
+											e2.TransferMatter( e, matter_demand, 1, true );
+
+											let new_matter = ( e2.matter || e2._matter || 0 );
+
+											if ( old_matter !== new_matter )
+											{
+												sdCrystal.Zap( e, e2, '#aaddff' );
+												play_sound = 1;
+											}
+
+											matter_demand -= ( old_matter - new_matter );
+
+											if ( matter_demand <= 0 )
+											break;
 										}
-										
-										let value = ( old_hp - new_hp );// / 0.15;
+									}
+								}
 
-										e.matter = Math.min( e.matter_max, e.matter + value );
-										matter_demand -= value;
+								if ( matter_demand > 0 )
+								{
+									for ( let i = 0; i < e._anything_near.length; i++ )
+									{
+										let e2 = e._anything_near[ i ];
 
-										if ( matter_demand <= 0 )
-										break;
+										if ( e2.IsTargetable( e ) )
+										{
+											let old_hp = ( e2.hea || e2._hea || 0 );
+
+											e2.DamageWithEffect( 40, e, false, false );
+
+											let new_hp = ( e2.hea || e2._hea || 0 );
+
+											if ( old_hp !== new_hp )
+											{
+												sdCrystal.Zap( e, e2, '#ffaa00' );
+												play_sound = 2;
+											}
+
+											let value = ( old_hp - new_hp );// / 0.15;
+
+											e.matter = Math.min( e.matter_max, e.matter + value );
+											matter_demand -= value;
+
+											if ( matter_demand <= 0 )
+											break;
+										}
+									}
+								}
+
+								if ( play_sound )
+								sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:1, pitch: ( play_sound === 1 ) ? 0.8 : 0.6 });
+							}
+							else
+							if ( e.speciality === 2 )
+							{
+								if ( e.is_very_depleted )
+								{
+									e.speciality = 1;
+								}
+								else
+								if ( e.matter_regen < e.max_matter_regen )
+								{
+									let demand = e.max_matter_regen - e.matter_regen;
+									for ( let i = 0; i < e._anything_near.length; i++ )
+									{
+										let e2 = e._anything_near[ i ];
+
+										if ( e2.is( sdCrystal ) )
+										if ( e2.IsTargetable( e ) )
+										if ( e2.matter_regen > 0 )
+										{
+											let demand_to_e2_regen = demand * e.matter_max / e2.matter_max;
+											
+											if ( e2.matter_regen > demand_to_e2_regen )
+											{
+												e2.matter_regen -= demand_to_e2_regen;
+												e.matter_regen += demand;
+												demand = 0;
+												
+												sdCrystal.Zap( e, e2, '#ffaa00' );
+												sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:1, pitch: 0.7 });
+												
+												break;
+											}
+											else
+											{
+												demand_to_e2_regen = e2.matter_regen;
+												
+												e.matter_regen += demand_to_e2_regen * e2.matter_max / e.matter_max;
+												
+												sdCrystal.Zap( e, e2, '#ffaa00' );
+												sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:demand_to_e2_regen * e2.matter_max / e.matter_max / demand, pitch: 0.7 });
+												
+												e2.matter_regen = 0;
+											}
+										}
 									}
 								}
 							}
-
-							if ( play_sound )
-							sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:1, pitch: ( play_sound === 1 ) ? 0.8 : 0.6 });
-					
 						}
 					}
 				}
 			}
 		};
-		sdCrystal.spaciality_table[ 2560 ] = {
+		sdCrystal.speciality_table[ 2560 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
 				return 'Soul taking ' + base_title.toLowerCase();
+			
+				return 'Symbiotic co-pilot ' + base_title.toLowerCase();
 			},
 			
 			GetFilterAltering: ( e, ctx_filter )=>
 			{
+				if ( e.speciality === 1 )
 				return ctx_filter + 'brightness(0.6)contrast(2)saturate(0.3)drop-shadow(0px 0px 1px #000000)';
+			
+				return ctx_filter + 'brightness(0.7)contrast(2)saturate(0.1)drop-shadow(0px 0px 1px #000000)';
 			},
 			
 			onThink: ( e, GSPEED )=>
@@ -435,8 +678,42 @@ class sdCrystal extends sdEntity
 				{
 					e._private_props.is_busy = Math.max( 0, ( e._private_props.is_busy || 0 ) - GSPEED );
 					
+					e._private_props.host_net_id = e._private_props.host_net_id || -1;
+					
+					const BindTo = ( e2 )=>
+					{
+						if ( e._private_props.host_net_id === e2._net_id )
+						return;
+					
+						if ( e._private_props.is_busy <= 0 )
+						{
+							e2.Say( sdWorld.AnyOf([ 
+								'I don\'t really like this...',
+								'Oh well...',
+								'Not this thing again...',
+								'It has chosen me'
+							]) );
+
+							e._private_props.is_busy = 60;
+							sdSound.PlaySound({ name:'alien_energy_power_charge1', x:e.x, y:e.y, volume:1, pitch:2 });
+							sdCrystal.Zap( e, e2, '#ffaaaa' );
+
+							e._private_props.host_net_id = e2._net_id;
+						}
+					};
+					
+					if ( e.speciality === 2 )
+					if ( e.held_by )
+					if ( e.held_by.is( sdCharacter ) )
+					{
+						BindTo( e.held_by );
+					}
+					
+					//if ( e._private_props.host_net_id && e._private_props.host_net_id._is_being_removed )
+					//e._private_props.host_net_id = null;
+					
 					if ( e._private_props.is_busy <= 0 )
-					if ( Math.random() < 0.1 )
+					if ( e.speciality === 2 || Math.random() < 0.1 )
 					{
 						const VisitEntity = ( e2 )=>
 						{
@@ -450,10 +727,16 @@ class sdCrystal extends sdEntity
 									e2.biometry >= 0 && // Real player, not a fake RTP copy that is made on death
 									!e2._ai_enabled );
 
+							let value = Math.max( 3, ( e2._score || 0 ) );
+
 							if ( 
 									( 
 										is_player && 
-										( e2.hea || e2._hea || 0 ) < ( e2.hmax || e2._hmax || 0 ) 
+										(
+											( e2.hea || e2._hea || 0 ) < ( e2.hmax || e2._hmax || 0 ) 
+											|| 
+											e.speciality === 2 
+										)
 									) 
 									|| 
 									( 
@@ -464,67 +747,47 @@ class sdCrystal extends sdEntity
 										) 
 									)
 							)
-							if ( e2.IsTargetable( e ) )
 							{
-								const Check = ()=>
+								if ( e2.IsTargetable( e ) )
 								{
-									return ( !e._is_being_removed && !e2._is_being_removed && sdWorld.inDist2D_Boolean( e.x, e.y, e2.x, e2.y, 300 ) && e2.IsTargetable( e ) && sdWorld.CheckLineOfSight2( e.x, e.y, e2.x, e2.y, e,e2, null, sdCom.com_visibility_unignored_classes ) )
-								};
-
-								if ( Check() )
-								{
-									let value = Math.max( 1, ( e2._score || 0 ) );
-
-									e._private_props.is_busy = 90;
-
-									sdSound.PlaySound({ name:'alien_energy_power_charge1', x:e.x, y:e.y, volume:1, pitch:2 });
-									
-									sdCrystal.Zap( e, e2, '#ffaaaa' );
-									
-									let time_scale = 150;
-									
-									if ( e2.is( sdCharacter ) )
+									const Check = ()=>
 									{
-										e2.Say( [ 
-											'Oh no!',
-											'Run!',
-											'Run away!',
-											'Hide!',
-											'It instakills!'
-										][ ~~( Math.random() * 5 ) ] );
-									}
+										return ( !e._is_being_removed && !e2._is_being_removed && sdWorld.inDist2D_Boolean( e.x, e.y, e2.x, e2.y, 300 ) && e2.IsTargetable( e ) && sdWorld.CheckLineOfSight2( e.x, e.y, e2.x+(e2.hitbox_x1+e2.hitbox_x2)/2, e2.y+(e2.hitbox_y1+e2.hitbox_y2)/2, e,e2, null, sdCom.com_visibility_unignored_classes ) )
+									};
 
-									for ( let i = 1; i < 10; i++ )
-									setTimeout(()=>{
-										if ( Check() )
-										sdCrystal.Zap( e, e2, '#ffaaaa' );
-									}, i * time_scale );
-
-									setTimeout(()=>{
-
-										e._private_props.is_busy = 30;
-
-										if ( Check() )
+									if ( Check() )
+									{
+										if ( e.speciality === 2 )
 										{
-											sdSound.PlaySound({ name:'gun_anti_rifle_hit', x:e.x, y:e.y, volume:1.5, pitch:0.6 });
-
-											if ( e2.is( sdCharacter ) && ( e2._god || e2.AttemptTeleportOut( null, true ) ) )
+											if ( e._private_props.host_net_id === -1 )
 											{
-												// Saved by cloner
+												if ( e2.is( sdCharacter ) )
+												{
+													BindTo( e2 );
+												}
 											}
 											else
+											if ( e2._net_id !== e._private_props.host_net_id )
+											if ( e2.is_alive )
 											{
-												let old_biometry = e2.biometry;
-											
-												if ( typeof e2.biometry !== 'undefined' )
-												e2.biometry = -3;
-												
-												e2.DamageWithEffect( 10000, e, false, false );
 												sdCrystal.Zap( e, e2, '#ffaaaa' );
+												e._private_props.is_busy = 30 / 1000 * 150;
 												
-												if ( e2._is_being_removed )
+												e._private_props.last_target_net_id = e2._net_id;
+
+												if ( sdWorld.time > e._private_props.last_attack_time + 1000 )
+												sdSound.PlaySound({ name:'alien_energy_power_charge1', x:e.x, y:e.y, volume:1, pitch:2 });
+
+												e._private_props.last_attack_time = sdWorld.time;
+
+												e2.DamageWithEffect( 50, e, false, false );
+												e._hea = Math.min( e._hmax, e._hea + 25 );
+
+												if ( !e2.is_alive )
 												{
-													e.matter_regen = Math.min( e.matter_regen + value, 400 );
+													e.matter_regen = Math.min( e.matter_regen + value, e.max_matter_regen );
+
+													sdSound.PlaySound({ name:'gun_anti_rifle_hit', x:e.x, y:e.y, volume:1.5, pitch:0.6 });
 
 													sdWorld.SendEffect({ 
 														x:e2.x, 
@@ -537,54 +800,115 @@ class sdCrystal extends sdEntity
 													});
 
 													e.ApplyStatusEffect({ type: sdStatusEffect.TYPE_TIME_AMPLIFICATION, t: 30 * 30 });
-												}
-												else
-												{
-													if ( typeof e2.biometry !== 'undefined' )
-													e2.biometry = old_biometry;
+													
+													e._private_props.last_attack_time = 0;
 												}
 											}
 										}
+										else
+										{
+											e._private_props.is_busy = 90;
 
-									}, 10 * time_scale );
+											sdSound.PlaySound({ name:'alien_energy_power_charge1', x:e.x, y:e.y, volume:1, pitch:2 });
+
+											sdCrystal.Zap( e, e2, '#ffaaaa' );
+
+											let time_scale = 150;
+
+
+											if ( e2.is( sdCharacter ) )
+											{
+												e2.Say( sdWorld.AnyOf([ 
+													'Oh no!',
+													'Run!',
+													'Run away!',
+													'Hide!',
+													'It instakills!'
+												]) );
+											}
+
+											for ( let i = 1; i < 10; i++ )
+											setTimeout(()=>{
+												if ( Check() )
+												sdCrystal.Zap( e, e2, '#ffaaaa' );
+											}, i * time_scale );
+
+											setTimeout(()=>{
+
+												e._private_props.is_busy = 30;
+
+												if ( Check() )
+												{
+													sdSound.PlaySound({ name:'gun_anti_rifle_hit', x:e.x, y:e.y, volume:1.5, pitch:0.6 });
+
+													if ( e2.is( sdCharacter ) && ( e2._god || e2.AttemptTeleportOut( null, true ) ) )
+													{
+														// Saved by cloner
+													}
+													else
+													{
+														let old_biometry = e2.biometry;
+
+														if ( typeof e2.biometry !== 'undefined' )
+														e2.biometry = -3;
+
+														e2.DamageWithEffect( 10000, e, false, false );
+														sdCrystal.Zap( e, e2, '#ffaaaa' );
+
+														if ( e2._is_being_removed )
+														{
+															e.matter_regen = Math.min( e.matter_regen + value, e.max_matter_regen );
+
+															sdWorld.SendEffect({ 
+																x:e2.x, 
+																y:e2.y, 
+																radius:50, // 80 was too much?
+																damage_scale: 0, // 5 was too deadly on relatively far range
+																type:sdEffect.TYPE_EXPLOSION, 
+																//owner:e,
+																color:'#ffaaaa' 
+															});
+
+															e.ApplyStatusEffect({ type: sdStatusEffect.TYPE_TIME_AMPLIFICATION, t: 30 * 30 });
+														}
+														else
+														{
+															if ( typeof e2.biometry !== 'undefined' )
+															e2.biometry = old_biometry;
+														}
+													}
+												}
+
+											}, 10 * time_scale );
+										}
+									}
 								}
 							}
 						};
-						const VisitArray = ( arr )=>
-						{
-							for ( let i = 0; i < arr.length && e._private_props.is_busy <= 0; i++ )
-							{
-								let e2 = arr[ i ];
-								
-								if ( e2 === e )
-								continue;
-							
-								VisitEntity( e2 );
-							}
-						};
-
-						/*if ( e._anything_near )
-						VisitArray( e._anything_near );
-
-						if ( e._affected_hash_arrays )
-						for ( let i = 0; i < e._affected_hash_arrays.length; i++ )
-						VisitArray( e._affected_hash_arrays[ i ].arr );
-
-						for ( let i = 0; i < sdWorld.sockets.length; i++ )
-						if ( sdWorld.sockets[ i ].character )
-						VisitEntity( sdWorld.sockets[ i ].character );*/
 						
 						let e2 = e.GetRandomEntityNearby( 300 );
 						if ( e2 )
 						VisitEntity( e2 );
+					
+						if ( e.speciality === 2 )
+						if ( e._private_props.last_target_net_id >= 0 )
+						{
+							let e2 = sdEntity.entities_by_net_id_cache_map.get( e._private_props.last_target_net_id );
+							
+							if ( !e2 || e2._is_being_removed )
+							e._private_props.last_target_net_id = -1;
+							else
+							VisitEntity( e2 );
+						}
 															
 					}
 				}
 			}
 		};
-		sdCrystal.spaciality_table[ 5120 ] = {
+		sdCrystal.speciality_table[ 5120 ] = {
 			
-			AlterTitle: ( e, base_title )=>{
+			AlterTitle: ( e, base_title )=>
+			{
 				return 'Burning ' + base_title.toLowerCase();
 			},
 			
@@ -607,8 +931,135 @@ class sdCrystal extends sdEntity
 				return true;
 			}
 		};
-		
-		sdCrystal.spaciality_table[ 40960 ] = {
+		sdCrystal.speciality_table[ 10240 ] = {
+			
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
+				return 'Indifferent ' + base_title.toLowerCase();
+			
+				return 'Medusa ' + base_title.toLowerCase();
+			},
+			
+			GetFilterAltering: ( e, ctx_filter )=>
+			{
+				if ( e.speciality === 1 )
+				return ctx_filter + 'brightness(0.5)saturate(0.1)contrast(2)hue-rotate(60deg)';
+			
+				return ctx_filter + 'brightness(0.8)saturate(0)contrast(1.3)';
+			},
+			
+			AlterTimeScale: ( e, GSPEED_scaled )=>
+			{
+				if ( e.speciality === 2 )
+				{
+					if ( e._anything_near )
+					for ( let i = 0; i < e._anything_near.length; i++ )
+					{
+						let e2 = e._anything_near[ i ];
+						
+						e._private_props.medusa_cooldown = Math.max( 0, ( e._private_props.medusa_cooldown || 0 ) - GSPEED_scaled );
+
+						if ( e._private_props.medusa_cooldown > 0 )
+						break;
+
+						if ( e2.is( sdCrystal ) )
+						if ( e2.GetTier() !== e.GetTier() || e2.speciality !== e.speciality )
+						//if ( e2.GetTier() < e.GetTier() )
+						if ( !e2.is_anticrystal )
+						{
+							e2.SetTier( e.GetTier() );
+							
+							e2.speciality = e.speciality;
+							
+							sdCrystal.Zap( e, e2, '#ffaa00' );
+							sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:1, pitch: 0.6 });
+							
+							e._private_props.medusa_cooldown = 10 + Math.random() * 10;
+							e2._private_props.medusa_cooldown = 10 + Math.random() * 10;
+						}
+					}
+					return 0.05;
+				}
+				
+				return 0.01;
+			},
+			
+			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
+			{
+				if ( e.speciality === 2 )
+				e._hea = Math.min( e._hmax, e._hea + dmg * 0.7 );
+				else
+				e._hea = Math.min( e._hmax, e._hea + dmg * 0.99 );
+			}
+		};
+		sdCrystal.speciality_table[ 20480 ] = {
+			
+			AlterTitle: ( e, base_title )=>{
+				return base_title + ' of emptiness';
+			},
+			
+			GetFilterAltering: ( e, ctx_filter )=>
+			{
+				return ctx_filter + 'sepia(1)saturate(4)hue-rotate(-40deg)brightness(0.7)contrast(2)';
+			},
+			
+			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
+			{
+				e._hea = Math.min( e._hmax, e._hea + dmg * 0.5 );
+			},
+			
+			onThink: ( e, GSPEED )=>
+			{
+				if ( sdWorld.is_server )
+				if ( !e.held_by || !e.held_by.is( sdMatterAmplifier ) || !e.held_by.shielded )
+				if ( e.matter > 100 )
+				{
+					e._private_props.zap_timer = ( e._private_props.zap_timer || 0 ) + GSPEED;
+					
+					if ( e._private_props.zap_timer > 60 )
+					{
+						e._private_props.zap_timer -= 60 * ( 0.5 + Math.random() * 0.5 );
+						
+						if ( e._anything_near )
+						{
+							e.matter -= 100;
+					
+							//let play_sound = 0;
+							
+							sdWorld.SendEffect({ 
+								x:e.x, 
+								y:e.y, 
+								radius: e.is_big ? 60 : 30,
+								damage_scale: 0, // Just a decoration effect
+								type:sdEffect.TYPE_EXPLOSION, 
+								owner:e,
+								color:'#ffff66',
+								no_smoke:true,
+								shrapnel:true
+							});
+
+							for ( let i = 0; i < e._anything_near.length; i++ )
+							{
+								let e2 = e._anything_near[ i ];
+
+								if ( e2.IsTargetable( e ) )
+								{
+									sdLost.ApplyAffection( e2, 100, null, sdLost.FILTER_GOLDEN );
+								}
+							}
+							
+							sdSound.PlaySound({ name: 'supercharge_combined2_part2', x:e.x, y:e.y, volume: 0.5, pitch: e.is_big?0.5:1 });
+						
+							//if ( play_sound )
+							//sdSound.PlaySound({ name:'drone_explosion', x:e.x, y:e.y, volume:1, pitch: 0.3 });
+					
+						}
+					}
+				}
+			}
+		};
+		sdCrystal.speciality_table[ 40960 ] = {
 			
 			AlterTitle: ( e, base_title )=>{
 				return 'Freezing ' + base_title.toLowerCase();
@@ -676,6 +1127,146 @@ class sdCrystal extends sdEntity
 				}
 			}
 		};
+		sdCrystal.speciality_table[ 81920 ] = {
+			
+			AlterTitle: ( e, base_title )=>
+			{
+				if ( e.speciality === 1 )
+				return 'Anti-asp hive ' + base_title.toLowerCase();
+				
+				return 'Bit silence ' + base_title.toLowerCase();
+			},
+			
+			GetFilterAltering: ( e, ctx_filter )=>
+			{
+				if ( e.speciality === 1 )
+				return 'hue-rotate(180deg)brightness(0.4)contrast(3)drop-shadow(0px 0px 2px #000000)drop-shadow(0px 0px 5px #ff0000)drop-shadow(0px 0px 2px #000000)';
+			
+				return 'saturate(0.3)brightness(0.15)contrast(1)drop-shadow(0px 0px 5px #000000)drop-shadow(0px 0px 2px #000000)';
+			},
+			
+			onDraw: ( e, ctx, attached )=>
+			{
+				if ( e.speciality === 2 )
+				{
+					let phase = sdWorld.time + ( e._net_id || 0 ) * 1239;
+					let amp = 3;
+					let an = Math.sin( phase / 56 );
+					let s = Math.sin( phase / 20 ) * amp;
+					let xx = Math.sin( an ) * s * 0.2;
+					let yy = Math.cos( an ) * s;
+
+					ctx.globalAlpha = 1 - Math.abs( s / amp ) * 0.8;
+
+					ctx.save();
+					{
+						ctx.translate( -xx, -yy );
+						e._DefaultDraw( ctx, attached );
+					}
+					ctx.restore();
+
+					ctx.globalAlpha = ( 1 - Math.abs( s / amp ) * 0.8 ) * Math.abs( s / amp );
+
+					ctx.save();
+					{
+						ctx.translate( xx, yy );
+						e._DefaultDraw( ctx, attached );
+					}
+					ctx.restore();
+					ctx.globalAlpha = 1;
+				}
+			},
+			
+			onDamage: ( e, dmg, initiator=null, was_alive=true )=>
+			{
+				e._hea = Math.min( e._hmax, e._hea + dmg * 0.85 );
+				
+				if ( e._hea <= 0 && was_alive )
+				{
+					sdWorld.SendEffect({ 
+						x:e.x, 
+						y:e.y, 
+						radius:80, 
+						damage_scale: 0,
+						type:sdEffect.TYPE_EXPLOSION_NON_ADDITIVE, 
+						owner:initiator,
+						color:'#000000',
+						no_smoke:true,
+						shrapnel:true
+					});
+				}
+			},
+			
+			onThink: ( e, GSPEED )=>
+			{
+				if ( e.speciality === 1 )
+				{
+					if ( sdWorld.is_server )
+					if ( !e.held_by || !e.held_by.is( sdMatterAmplifier ) || !e.held_by.shielded )
+					if ( e.matter > 100 )
+					{
+						e._private_props.dupe_timer = ( e._private_props.dupe_timer || 0 ) + GSPEED;
+						if ( e._private_props.dupe_timer_max === undefined )
+						e._private_props.dupe_timer_max = 20;
+
+						//if ( e._private_props.spawns_left === undefined )
+						//e._private_props.spawns_left = 10;
+
+						if ( e._private_props.dupe_timer > e._private_props.dupe_timer_max )
+						{
+							e._private_props.dupe_timer = 0;
+
+							//if ( e._private_props.spawns_left > 0 )
+							{
+								//e._private_props.spawns_left--;
+
+								let spawns = Math.min( 3, e.matter / 100 )
+
+								if ( spawns > 0 )
+								{
+									e.matter -= spawns * 100;
+
+									sdWeather.SimpleSpawner({
+
+										count: [ spawns, spawns ],
+										class: sdAsp,
+										params: { tier: sdAsp.TIER_ANTI, filter: 'saturate(0)brightness(0.5)contrast(2)', crystal_worth: 81920, attack_through_walls:true },
+										aerial: true,
+
+										near_entity: e,
+										group_radius: e._hitbox_x2 + 16,
+
+										allow_near_player: true
+									});
+								}
+							}
+						}
+					}
+				}
+				else
+				if ( e.speciality === 2 )
+				{
+					if ( e._anything_near )
+					for ( let i = 0; i < e._anything_near.length; i++ )
+					{
+						let e2 = e._anything_near[ i ];
+						
+						if ( typeof e2.matter !== 'undefined' )
+						e2.matter = 0;
+						
+						if ( typeof e2._matter !== 'undefined' )
+						e2._matter = 0;
+						
+						//e2.ApplyStatusEffect({ type: sdStatusEffect.TYPE_VOID_SHARD_EFFECT, t: 90 });
+						
+						/*if ( e2.is( sdCharacter ) )
+						{
+							e2.time_ef = Math.max( e2.time_ef, 3000 );
+						}*/
+					}
+				}
+			}
+		};
 		
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
 	}
@@ -691,7 +1282,7 @@ class sdCrystal extends sdEntity
 	
 	get hard_collision() // For world geometry where players can walk
 	//{ return this.held_by !== null ? false : true; }
-	{ return true; }
+	{ return ( !this.held_by || !this.held_by.CrystalHasHardCollision || this.held_by.CrystalHasHardCollision( this ) ); }
 	
 	/* Causes client-side falling through unsynced ground, probably bad thing to do and it won't be complex entity after sdSnapPack is added
 	get is_static() // Static world objects like walls, creation and destruction events are handled manually. Do this._update_version++ to update these
@@ -722,7 +1313,7 @@ class sdCrystal extends sdEntity
 		if ( this.speciality > 0 )
 		{
 			let tier = this.GetTier() * 40;
-			let methods = sdCrystal.spaciality_table[ tier ];
+			let methods = sdCrystal.speciality_table[ tier ];
 			if ( methods && methods.AlterTitle )
 			t = methods.AlterTitle( this, t );
 		}
@@ -760,12 +1351,17 @@ class sdCrystal extends sdEntity
 		throw new Error('Obsolete, use this.held_by instead');
 	}*/
 	
-	/*getRequiredEntities() // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
 	{
 		if ( this.held_by )
 		return [ this.held_by ]; 
 	
 		return [];
+	}
+	/*													
+	IsCarriable( by_entity ) // In hands
+	{
+		return !this.is_big;
 	}*/
 	
 	get is_natural()
@@ -815,7 +1411,7 @@ class sdCrystal extends sdEntity
 	{
 		if ( this.speciality > 0 )
 		{
-			let methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+			let methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 			if ( methods && methods.isFireAndAcidDamageResistant )
 			return methods.isFireAndAcidDamageResistant( this );
 		}
@@ -826,7 +1422,7 @@ class sdCrystal extends sdEntity
 	{
 		if ( this.speciality > 0 )
 		{
-			let methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+			let methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 			if ( methods && methods.GetBleedEffect )
 			return methods.GetBleedEffect( this );
 		}
@@ -838,7 +1434,7 @@ class sdCrystal extends sdEntity
 	{
 		if ( this.speciality > 0 )
 		{
-			let methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+			let methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 			if ( methods && methods.BouncinessAltering )
 			return methods.BouncinessAltering( this );
 		}
@@ -848,6 +1444,11 @@ class sdCrystal extends sdEntity
 	
 	get friction_remain()
 	{ return this.type === sdCrystal.TYPE_CRYSTAL_BALLOON ? 0.9 : 0.8; }
+	
+	get speciality_tier()
+	{
+		return this.GetTier() * 40;
+	}
 	
 	GetTier()
 	{
@@ -859,10 +1460,30 @@ class sdCrystal extends sdEntity
 	
 		return this.matter_max / 40;
 	}
+	SetTier( target_tier )
+	{
+		let e2 = this;
+		let ratio = 1 / target_tier * e2.GetTier();
+		e2.matter_regen = e2.matter_regen * ratio;
+
+		e2.matter_max /= ratio;
+		e2.matter_regen = Math.min( e2.matter_regen, e2.max_matter_regen );
+		e2.matter = Math.min( e2.matter, e2.matter_max );
+	}
+	
+	GetSpecialityMethods()
+	{
+		let tier = this.GetTier() * 40;
+		let methods = sdCrystal.speciality_table[ tier ];
+		return methods;
+	}
 	
 	constructor( params )
 	{
 		super( params );
+		
+		//if ( !sdWorld.is_server )
+		//globalThis.EnforceChangeLog( this, 'x', true, 'nan_catch' );
 		
 		//let is_really_deep = params.tag && params.tag.indexOf( 'really_deep' ) !== -1; // params.tag === 'deep' || params.tag === 'deep_crab';
 		
@@ -887,6 +1508,8 @@ class sdCrystal extends sdEntity
 			
 		this._time_amplification = 0;
 		
+		this._last_amplification_until = 0; // Overcharge mode for matter-based BSUs whenever they are in beeping state
+		
 		this._being_sawed_time = 0; // By saw. If broken near this time - clusters break into 4 smaller crystals instead
 
 		this.held_by = null; // For amplifiers
@@ -895,19 +1518,20 @@ class sdCrystal extends sdEntity
 		let bad_luck = 1; // 1.45; // High value crystals are more rare if this value is high
 		
 		let r = 1 - Math.pow( Math.random(), bad_luck );
-		//let r = Math.random();
 		
-		//r = 0; // Hack
-		if ( this.type === sdCrystal.TYPE_CRYSTAL_CRAB || this.type === sdCrystal.TYPE_CRYSTAL_CRAB_BIG )
-		{
-			this._next_action = sdWorld.time + 2000;
-			this.walk_direction = 0;
-			this.side = -1;
-			this.blink = 0;
-			this._blink_until = 0;
-			this._last_stand_when = 0;
-			this.attack_anim = 0; // For big crystal crabs
-		}
+		
+		
+		
+		//if ( this.type === sdCrystal.TYPE_CRYSTAL_CRAB || this.type === sdCrystal.TYPE_CRYSTAL_CRAB_BIG ) Branching is bad since it might cause property synchronization shift and cause crystals to appear with negative matter/regeneration rate
+		//{
+		this._next_action = sdWorld.time + 2000;
+		this.walk_direction = 0;
+		this.side = -1;
+		this.blink = 0;
+		this._blink_until = 0;
+		this._last_stand_when = 0;
+		this.attack_anim = 0; // For big crystal crabs
+		//}
 		
 		//if ( is_really_deep )
 		//r *= 0.25;
@@ -975,24 +1599,32 @@ class sdCrystal extends sdEntity
 			this._hea = 15;
 			this._spawn_anim = 0;
 		}
-		
+
 		if ( this.type === sdCrystal.TYPE_EXCAVATOR_QUARTZ )
 		{
 			this._hea = 200;
 		}
 		
-		this._hmax = this._hea; // For repair logic
-		
 		// Crabs can be healed x2 from original health (from grass)
 		if ( this.type === sdCrystal.TYPE_CRYSTAL_CRAB || this.type === sdCrystal.TYPE_CRYSTAL_CRAB_BIG )
-		this._hmax *= 2; 
+		this._hea *= 2; 
+		
+		this._hmax = this._hea; // For repair logic
 
 		this._current_target = null; // For big crystal crabs
 		
 		// TODO: speciality should not be random by default... Keep randomness only for ground blocks, perhaps?
 		this.speciality = ( ( params.from_ground || params.from_tree ) && Math.random() < 0.05 ) ? 1 : 0; // How much special is this crystal? Each matter_max crystal might have unique abilities
+		
+		// 10% chance to have speciality of tier 2
+		if ( this.speciality === 1 )
+		if ( Math.random() < 0.1 )
+		this.speciality = 2;
+		
 		if ( params.speciality !== undefined )
 		this.speciality = params.speciality;
+	
+		this._bounce_anim = 0;
 	
 		this._private_props = {};
 		this.extra = {};
@@ -1029,12 +1661,45 @@ class sdCrystal extends sdEntity
 		return sdCrystal.ignored_classes_array;
 	}
 	
+	static ZapLine( xx, yy, ex, ey, color )
+	{
+		let di = sdWorld.Dist2D_Vector( xx - ex, yy - ey );
+
+		let p = [];
+
+		p.push({
+			x: ex,
+			y: ey 
+		});
+
+		for ( let i = 0; i < 2; i++ )
+		{
+			let morph = ( i + 1 ) / 3;
+
+			let an = Math.random() * Math.PI * 2;
+			let r = di * 0.333 / 2;
+
+			p.push({
+				x: xx * morph + ex * ( 1 - morph ) + Math.sin( an ) * r,
+				y: yy * morph + ey * ( 1 - morph ) + Math.cos( an ) * r 
+			});
+		}
+
+		p.push({
+			x: xx,
+			y: yy 
+		});
+
+		for ( let i = 0; i < p.length-1; i++ )
+		sdWorld.SendEffect({ x:p[i].x, y:p[i].y, x2:p[i+1].x, y2:p[i+1].y, type:sdEffect.TYPE_BEAM, color:color });
+	}
 	static Zap( e, e2, color )
 	{
-		let xx = e2.x + ( e2.hitbox_x1 + e2.hitbox_x2 ) / 2;
+		sdCrystal.ZapLine( e2.x + ( e2.hitbox_x1 + e2.hitbox_x2 ) / 2, e2.y + ( e2.hitbox_y1 + e2.hitbox_y2 ) / 2, e.x, e.y, color );
+		/*let xx = e2.x + ( e2.hitbox_x1 + e2.hitbox_x2 ) / 2;
 		let yy = e2.y + ( e2.hitbox_y1 + e2.hitbox_y2 ) / 2;
 
-		let di = sdWorld.Dist2D_Vector( xx - e.x, yy - e.y )
+		let di = sdWorld.Dist2D_Vector( xx - e.x, yy - e.y );
 
 		let p = [];
 
@@ -1062,7 +1727,7 @@ class sdCrystal extends sdEntity
 		});
 
 		for ( let i = 0; i < p.length-1; i++ )
-		sdWorld.SendEffect({ x:p[i].x, y:p[i].y, x2:p[i+1].x, y2:p[i+1].y, type:sdEffect.TYPE_BEAM, color:color });
+		sdWorld.SendEffect({ x:p[i].x, y:p[i].y, x2:p[i+1].x, y2:p[i+1].y, type:sdEffect.TYPE_BEAM, color:color });*/
 	}
 				
 	Damage( dmg, initiator=null )
@@ -1092,7 +1757,11 @@ class sdCrystal extends sdEntity
 		if ( sdWorld.time < this._damagable_in )
 		if ( !( initiator && initiator.IsPlayerClass() && initiator.power_ef > 0 ) )
 		{
-			sdSound.PlaySound({ name:'crystal2_short', x:this.x, y:this.y, pitch: 0.75 });
+			if ( sdWorld.time > this._last_damage + 75 )
+			{
+				this._last_damage = sdWorld.time;
+				sdSound.PlaySound({ name:'crystal2_short', x:this.x, y:this.y, pitch: 0.75 });
+			}
 			return;
 		}
 
@@ -1109,12 +1778,21 @@ class sdCrystal extends sdEntity
 		
 		let was_alive = ( this._hea > 0 );
 		
+		//if ( isNaN( dmg ) )
+		//throw new Error();
+		
+		//if ( isNaN( this._hea ) )
+		//throw new Error();
+		
 		this._hea -= dmg;
+		
+		//if ( isNaN( this._hea ) )
+		//throw new Error();
 				
 		if ( this.speciality > 0 )
 		{
 			let tier = this.GetTier() * 40;
-			let methods = sdCrystal.spaciality_table[ tier ];
+			let methods = sdCrystal.speciality_table[ tier ];
 			if ( methods && methods.onDamage )
 			methods.onDamage( this, dmg, initiator, was_alive );
 		}
@@ -1139,8 +1817,6 @@ class sdCrystal extends sdEntity
 				
 				let replacement_entity = null;
 				let drop_reward = true;
-				
-				// DropShards( x,y,sx,sy, tot, value_mult, radius=0, shard_class_id=sdGun.CLASS_CRYSTAL_SHARD, normal_ttl_seconds=9, ignore_collisions_with=null, follow=null )
 				
 				if ( this.type === sdCrystal.TYPE_CRYSTAL_BIG || this.type === sdCrystal.TYPE_CRYSTAL_CRAB_BIG ) // Big crystals/big crystal crabs
 				{
@@ -1189,14 +1865,16 @@ class sdCrystal extends sdEntity
 						replacement_entity = ent;
 					}
 
-					
+					// DropShards( x,y,sx,sy, tot, value_mult, radius=0, shard_class_id=sdGun.CLASS_CRYSTAL_SHARD, normal_ttl_seconds=9, ignore_collisions_with=null, follow=null, speciality=false )
 					sdWorld.DropShards( this.x, this.y, this.sx, this.sy, 
 						Math.ceil( Math.max( 5, this.matter / this.matter_max * 40 / sdWorld.crystal_shard_value * 0.5 ) ) * ( 4 - xx_tot * yy_tot ),
 						this.matter_max / 160,
 						8,
 						undefined,
 						undefined,
-						replacement_entity
+						replacement_entity,
+						null,
+						this.speciality
 					);
 				}
 				else
@@ -1206,14 +1884,16 @@ class sdCrystal extends sdEntity
 					5,
 					undefined,
 					undefined,
-					replacement_entity
+					replacement_entity,
+					null,
+					this.speciality
 				);
 		
 				if ( drop_reward )
 				{
 					let reward_amount = sdEntity.SCORE_REWARD_BROKEN_5K_CRYSTAL * this.matter_max / 5120;
 
-					reward_amount *= this.matter_regen / 100;
+					reward_amount *= Math.min ( this.max_matter_regen / 100, this.matter_regen / 100 );
 
 					if ( this.is_crab ) // Give 40k large crab and 40k large crystal a love.
 					{
@@ -1223,10 +1903,10 @@ class sdCrystal extends sdEntity
 						reward_amount = Math.max( reward_amount, sdEntity.SCORE_REWARD_BROKEN_BIG_CRAB_CRYSTAL );
 					}
 
-					if ( this.matter_max >= 90000 || this.matter_regen >= 401 || this.is_anticrystal ) // Too high matter and regeneration will crash the server ( Preset Editor ), also spamming for score shards is not good.
+					if ( this.is_anticrystal )
 					reward_amount = 0;
 
-					reward_amount = ~~( reward_amount );
+					reward_amount = Math.min( 700, ~~( reward_amount ) );
 
 					if ( reward_amount > 0 )
 					{
@@ -1240,7 +1920,7 @@ class sdCrystal extends sdEntity
 		}
 		else
 		{
-			if ( sdWorld.time > this._last_damage + 50 )
+			if ( sdWorld.time > this._last_damage + 75 )
 			{
 				this._last_damage = sdWorld.time;
 				sdSound.PlaySound({ name:'crystal2_short', x:this.x, y:this.y, volume:1 });
@@ -1276,7 +1956,7 @@ class sdCrystal extends sdEntity
 	
 		if ( this.speciality > 0 )
 		{
-			let methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+			let methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 			if ( methods && methods.ImpactAltering )
 			vel = methods.ImpactAltering( this, vel );
 		}
@@ -1286,15 +1966,46 @@ class sdCrystal extends sdEntity
 			this.DamageWithEffect( ( vel - 3 ) * 15 );
 		}
 	}
+	
+	HeldByLogic( GSPEED )
+	{
+		// Usually all crystals can regenerate when they are in some amplifiers
+
+		if ( this._hea < this._hmax )
+		this._hea = Math.min( this._hmax, this._hea + GSPEED * 0.01 ); // Quite slow
+
+		if ( sdWorld.server_config.base_degradation )
+		if ( sdWorld.server_config.base_shielding_units_passive_drain_per_week_blue > 0 )
+		if ( this.held_by.is( sdMatterAmplifier ) )
+		this.matter_regen = sdWorld.MorphWithTimeScale( this.matter_regen, 0, 1 - sdWorld.server_config.base_shielding_units_passive_drain_per_week_blue, GSPEED * this.held_by.multiplier/8 / ( 30 * 60 * 60 * 24 * 7 ) ); // 20% per week on highest tier
+	}
+	get max_matter_regen()
+	{
+		let methods = null;
+		if ( this.speciality > 0 )
+		methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
+	
+		if ( methods )
+		if ( methods.GetMaxMatterRegen )
+		return methods.GetMaxMatterRegen( this );
+
+		if ( this.is_anticrystal )
+		return sdCrystal.max_anti_matter_regen;
+	
+		return sdCrystal.max_matter_regen;
+	}
 	onThinkFrozen( GSPEED )
 	{
 		let methods = null;
 		if ( this.speciality > 0 )
-		methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+		methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 	
 		if ( methods && methods.onThinkFrozen && methods.onThinkFrozen( this, GSPEED ) )
 		return;
 	
+		if ( this.held_by )
+		this.HeldByLogic( GSPEED );
+		else
 		super.onThinkFrozen( GSPEED );
 	}
 	onThink( GSPEED ) // Class-specific, if needed
@@ -1304,25 +2015,18 @@ class sdCrystal extends sdEntity
 		
 		let methods = null;
 		if ( this.speciality > 0 )
-		methods = sdCrystal.spaciality_table[ this.GetTier() * 40 ];
+		methods = sdCrystal.speciality_table[ this.GetTier() * 40 ];
 	
 		let GSPEED_scaled = sdGun.HandleTimeAmplification( this, GSPEED );
 		
 		if ( methods && methods.AlterTimeScale )
 		GSPEED_scaled = methods.AlterTimeScale( this, GSPEED_scaled );
+	
+		if ( sdWorld.time < this._last_amplification_until )
+		GSPEED_scaled *= 10000;
 		
 		if ( this.held_by )
-		{
-			// Usually all crystals can regenerate when they are in some amplifiers
-			
-			if ( this._hea < this._hmax )
-			this._hea = Math.min( this._hmax, this._hea + GSPEED * 0.01 ); // Quite slow
-		
-			if ( sdWorld.server_config.base_degradation )
-			if ( sdWorld.server_config.base_shielding_units_passive_drain_per_week_blue > 0 )
-			if ( this.held_by.is( sdMatterAmplifier ) )
-			this.matter_regen = sdWorld.MorphWithTimeScale( this.matter_regen, 0, 1 - sdWorld.server_config.base_shielding_units_passive_drain_per_week_blue, GSPEED * this.held_by.multiplier/8 / ( 30 * 60 * 60 * 24 * 7 ) ); // 20% per week on highest tier
-		}
+		this.HeldByLogic( GSPEED_scaled );
 		else
 		{
 			
@@ -1558,27 +2262,25 @@ class sdCrystal extends sdEntity
 	}
 	DrawHUD( ctx, attached ) // foreground layer
 	{
-		//if ( this.should_draw === 1 )
-		//if ( this.held_by === null )
+		if ( this.is_anticrystal )
+		sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " )" );
+		else
 		{
-			if ( this.is_anticrystal )
-			sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " )" );
-			else
+			// Limit vision to cable managment owner
+			/*if ( sdWorld.my_entity.is( sdPlayerDrone ) ||
+				( sdWorld.my_entity._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ] && 
+				  sdWorld.my_entity._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ].class === sdGun.CLASS_CABLE_TOOL ) )*/
+			sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " ) (matter regeneration rate: " + ~~(this.matter_regen ) + "%)" );
+			/*else
 			{
-				// Limit vision to cable managment owner
-				if ( sdWorld.my_entity.is( sdPlayerDrone ) ||
-					( sdWorld.my_entity._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ] && 
-					  sdWorld.my_entity._inventory[ sdGun.classes[ sdGun.CLASS_CABLE_TOOL ].slot ].class === sdGun.CLASS_CABLE_TOOL ) )
-				sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " ) (matter regeneration rate: " + ~~(this.matter_regen ) + "%)" );
+				if ( this.is_depleted )
+				sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " ) (depleted)" );
 				else
-				{
-					if ( this.is_depleted )
-					sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " ) (depleted)" );
-					else
-					sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " )" );
-				}
-			}
+				sdEntity.TooltipUntranslated( ctx, this.title + " ( " + sdWorld.RoundedThousandsSpaces(this.matter) + " / " + sdWorld.RoundedThousandsSpaces(this.matter_max) + " )" );
+			}*/
 		}
+
+		this.BasicCarryTooltip( ctx, 8 );
 	}
 	HookAttempt() // true for allow. this._current_target is sdBullet that is hook tracer
 	{
@@ -1614,7 +2316,7 @@ class sdCrystal extends sdEntity
 		if ( this.speciality > 0 )
 		{
 			let tier = this.GetTier() * 40;
-			let methods = sdCrystal.spaciality_table[ tier ];
+			let methods = sdCrystal.speciality_table[ tier ];
 			if ( methods && methods.onDraw )
 			{
 				methods.onDraw( this, ctx, attached );
@@ -1624,43 +2326,83 @@ class sdCrystal extends sdEntity
 		
 		this._DefaultDraw( ctx, attached );
 	}
-	_DefaultDraw( ctx, attached )
+	SetCrystalFilter( ctx, attached, crystal_hue_filter )
 	{
 		let filter_brightness_effect = sdCrystal.DoNothing;
-		
-		ctx.apply_shading = false;
 		
 		if ( attached )
 		if ( this.held_by )
 		if ( this.held_by.ModifyHeldCrystalFilter )
 		filter_brightness_effect = ( f )=>{ return this.held_by.ModifyHeldCrystalFilter( f ) };
 		
+		let f = crystal_hue_filter;
+
+		if ( this.speciality > 0 )
+		{
+			let tier = this.GetTier() * 40;
+			let methods = sdCrystal.speciality_table[ tier ];
+			if ( methods && methods.GetFilterAltering )
+			{
+				f = methods.GetFilterAltering( this, f );
+			}
+		}
+
+		if ( this.is_very_depleted )
+		f += 'saturate(0.15) hue-rotate(-20deg)';
+		else
+		if ( this.is_depleted )
+		f += 'saturate(0.5) hue-rotate(-20deg)';
+		else
+		if ( this.is_overcharged )
+		f += 'saturate(2) brightness(1.5)';
+
+		ctx.filter = filter_brightness_effect( f );
+	}
+	GetFilterForIllusions()
+	{
+		let ctx = { filter:'none' };
+		let attached = false;
+
 		const setFilter = ( crystal_hue_filter )=>
 		{
-			let f = crystal_hue_filter;
-			
-			
-			if ( this.speciality > 0 )
-			{
-				let tier = this.GetTier() * 40;
-				let methods = sdCrystal.spaciality_table[ tier ];
-				if ( methods && methods.GetFilterAltering )
-				{
-					f = methods.GetFilterAltering( this, f );
-				}
-			}
-			
+			this.SetCrystalFilter( ctx, attached, crystal_hue_filter );
+		};
 
-			if ( this.is_very_depleted )
-			f += 'saturate(0.15) hue-rotate(-20deg)';
-			else
-			if ( this.is_depleted )
-			f += 'saturate(0.5) hue-rotate(-20deg)';
-			else
-			if ( this.is_overcharged )
-			f += 'saturate(2) brightness(1.5)';
+		setFilter( 
+					sdWorld.GetCrystalHue(
+						( this.type === sdCrystal.TYPE_CRYSTAL_BALLOON ) ? this.matter_max * 2 : 
+						this.is_big ? this.matter_max / 4 : 
+						this.matter_max
+					)
+		);
 
-			ctx.filter = filter_brightness_effect( f );
+		return ctx.filter;
+	}
+	GetTitleForIllusions()
+	{
+		let t = this.title;
+		
+		if ( this.is_anticrystal )
+		t += " ( " + sdWorld.RoundedThousandsSpaces( this.matter ) + " / " + sdWorld.RoundedThousandsSpaces( this.matter_max ) + " )";
+		else
+		t += " ( " + sdWorld.RoundedThousandsSpaces( this.matter ) + " / " + sdWorld.RoundedThousandsSpaces( this.matter_max ) + " ) (matter regeneration rate: " + ~~( this.matter_regen ) + "%)";
+
+		return t;
+	}
+	_DefaultDraw( ctx, attached )
+	{
+		//let filter_brightness_effect = sdCrystal.DoNothing;
+		
+		ctx.apply_shading = false;
+		
+		/*if ( attached )
+		if ( this.held_by )
+		if ( this.held_by.ModifyHeldCrystalFilter )
+		filter_brightness_effect = ( f )=>{ return this.held_by.ModifyHeldCrystalFilter( f ) };*/
+		
+		const setFilter = ( crystal_hue_filter )=>
+		{
+			this.SetCrystalFilter( ctx, attached, crystal_hue_filter );
 		};
 		
 		//for ( let test = 0; test < 3; test++ )
@@ -1708,7 +2450,8 @@ class sdCrystal extends sdEntity
 					let visual_matter = this.matter * visual_matter_mult;
 					ctx.drawImageFilterCache( empty_img, - 16, - 16, 32, 32 );
 					
-					if ( this.type === sdCrystal.TYPE_EXCAVATOR_QUARTZ ) // I am probably butchering code again - Booraz
+					//if ( this.type === sdCrystal.TYPE_EXCAVATOR_QUARTZ ) // I am probably butchering code again - Booraz
+					if ( !this.GetSpecialityMethods() )
 					{
 						visual_matter_max = -1 * visual_matter_mult; // All quartz is white
 						visual_matter = ( this.matter / this.matter_max ) * -1 * visual_matter_mult;
@@ -1797,19 +2540,11 @@ class sdCrystal extends sdEntity
 		
 		//ctx.apply_shading = true;
 	}
-	DrawWithStatusEffects( ctx, attached=true )
-	{
-		let STATUS_EFFECT_LAYER_NORMAL = 1;
-		let STATUS_EFFECT_BEFORE = 0;
-		let STATUS_EFFECT_AFTER = 1;
-		sdStatusEffect.DrawEffectsFor( this, STATUS_EFFECT_LAYER_NORMAL, STATUS_EFFECT_BEFORE, ctx, false );
-
-		this.Draw( ctx, attached );
-
-		sdStatusEffect.DrawEffectsFor( this, STATUS_EFFECT_LAYER_NORMAL, STATUS_EFFECT_AFTER, ctx, false );
-	}
 	onBeforeRemove() // Class-specific, if needed
 	{
+		//if ( !sdWorld.is_server )
+		//console.warn( 'Crystal ('+this.matter_max+') removed' );
+		
 		if ( this.held_by )
 		if ( typeof this.held_by.DropCrystal !== 'undefined' )
 		{
@@ -1831,6 +2566,10 @@ class sdCrystal extends sdEntity
 		//return this._hmax * sdWorld.damage_to_matter + this.matter;
 	}
 	
+	IsPhysicallyMovable()
+	{
+		return !this.held_by;
+	}
 }
 //sdCrystal.init_class();
 

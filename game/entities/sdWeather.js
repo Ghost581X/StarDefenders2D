@@ -21,7 +21,7 @@
 		sdWorld.entity_classes.sdWeather.only_instance._daily_events = sdWorld.server_config.GetAllowedWorldEvents();
 
 
-	Stop all events:
+	Stop all events (you can add this to watch in your DevTools in order to have some moments of peace while debugging):
 
 		sdWorld.server_config.GetAllowedWorldEvents = ()=>[];
 		sdWorld.entity_classes.sdWeather.only_instance._daily_events = [];
@@ -33,10 +33,12 @@
 	sdWorld.entity_classes.sdWeather.only_instance.SimpleExecuteEvent( 32 ); // Swap 32 for number you want to test inside
  
 */
+
 import sdWorld from '../sdWorld.js';
 import sdEntity from './sdEntity.js';
 import sdEffect from './sdEffect.js';
 import sdAsteroid from './sdAsteroid.js';
+import sdFactionTools from './sdFactionTools.js';
 
 import sdCube from './sdCube.js';
 import sdBlock from './sdBlock.js';
@@ -85,6 +87,7 @@ import sdWanderer from './sdWanderer.js';
 import sdShurgManualTurret from './sdShurgManualTurret.js';
 import sdHover from './sdHover.js';
 import sdMothershipContainer from './sdMothershipContainer.js';
+import sdStalker from './sdStalker.js';
 
 import sdTask from './sdTask.js';
 import sdBaseShieldingUnit from './sdBaseShieldingUnit.js';
@@ -141,7 +144,7 @@ class sdWeather extends sdEntity
 		sdWeather.EVENT_AMPHIDS =				event_counter++; // 29
 		sdWeather.EVENT_BITERS =				event_counter++; // 30
 		sdWeather.EVENT_LAND_SCAN =				event_counter++; // 31
-		sdWeather.EVENT_FLESH_DIRT =			event_counter++; // 32
+		sdWeather.EVENT_FLESH_DIRT =			event_counter++; // 32 Empty, only asteroids can fleshify now
 		sdWeather.EVENT_COUNCIL_PORTAL =		event_counter++; // 33
 		sdWeather.EVENT_SWORD_BOT =				event_counter++; // 34
 		sdWeather.EVENT_TZYRG =					event_counter++; // 35
@@ -165,6 +168,9 @@ class sdWeather extends sdEntity
 		sdWeather.EVENT_MISSILES =				event_counter++; // 53
 		sdWeather.EVENT_TZYRG_OUTPOST =			event_counter++; // 54
 		sdWeather.EVENT_MOTHERSHIP_CONTAINER =	event_counter++; // 55
+		sdWeather.EVENT_CUBE_BOSS =				event_counter++; // 56
+		sdWeather.EVENT_TASK_ASSIGNMENT =		event_counter++; // 57
+		sdWeather.EVENT_STALKER =				event_counter++; // 58
 		
 		sdWeather.supported_events = [];
 		for ( let i = 0; i < event_counter; i++ )
@@ -178,8 +184,20 @@ class sdWeather extends sdEntity
 		
 		sdWeather.debug_rain = false;
 		
+		sdWeather.debug_quake = false;
+		
+		sdWeather.rain_hit_class_list = [ 'sdBlock', 'sdDoor', 'sdWater' ];
+		sdWeather.rain_background_walls = [ 'sdBG', 'sdTheatre' ];
+		
+		sdWeather.blocks = [ 'sdBlock' ];
+		sdWeather.blocks_and_water = [ 'sdBlock', 'sdWater' ];
+		sdWeather.water = [ 'sdWater' ];
+		
 		if ( sdWeather.debug_rain )
 		console.warn( 'WARNING: sdWeather.debug_rain is enabled! Rain will spawn under first socket character, where it stands only' );
+		
+		if ( sdWeather.debug_quake )
+		console.warn( 'WARNING: sdWeather.debug_quake is enabled! It will never end because of that' );
 		
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
 	}
@@ -201,6 +219,8 @@ class sdWeather extends sdEntity
 		
 		this.x = 0;
 		this.y = 0;
+		
+		this._chill = 0; // Disables weather logic completely
 		
 		this._next_grass_seed = 0;
 		
@@ -301,6 +321,10 @@ class sdWeather extends sdEntity
 		return ( prop === '_potential_invasion_events' || prop === '_daily_events' || prop === '_daily_weather_events' || prop === '_daily_sd_task_events' || prop === '_wanderer_models' );
 	}
 	
+	IsTargetable( by_entity=null, ignore_safe_areas=false )
+	{
+		return false; // Ignore bullets
+	}
 	GetSunIntensity()
 	{
 		return -Math.cos( this.day_time / ( 30 * 60 * 24 ) * Math.PI * 2 ) * 0.5 + 0.5;
@@ -308,7 +332,7 @@ class sdWeather extends sdEntity
 	IsWeatherEvent( n ) // Determines if event is a weather one. Put future weather events here
 	{
 		if ( n === sdWeather.EVENT_ACID_RAIN || n === sdWeather.EVENT_ASTEROIDS || n === sdWeather.EVENT_QUAKE ||
-		n === sdWeather.EVENT_WATER_RAIN || n === sdWeather.EVENT_SNOW ||n === sdWeather.EVENT_MATTER_RAIN ||
+		n === sdWeather.EVENT_WATER_RAIN || n === sdWeather.EVENT_SNOW || n === sdWeather.EVENT_MATTER_RAIN ||
 		n === sdWeather.EVENT_DIRTY_AIR || n === sdWeather.EVENT_EM_ANOMALIES )
 		return true;
 		
@@ -316,10 +340,12 @@ class sdWeather extends sdEntity
 	}
 	IsSDEvent( n ) // Determines if event is a SD one. Put future SD task related events here.
 	{
-		if ( n === sdWeather.EVENT_SD_EXTRACTION || n === sdWeather.EVENT_LAND_SCAN || n === sdWeather.EVENT_CRYSTALS_MATTER ||
+		// EG: Do we really want players to deal with same events every day? We probably do not
+		/*if ( n === sdWeather.EVENT_SD_EXTRACTION || n === sdWeather.EVENT_LAND_SCAN || n === sdWeather.EVENT_CRYSTALS_MATTER ||
 			n === sdWeather.EVENT_BEAM_PROJECTOR || n === sdWeather.EVENT_LONG_RANGE_ANTENNA || n === sdWeather.EVENT_PROTECT_SDBG_DRONE ||
 			n === sdWeather.EVENT_SOLAR_DISTRIBUTOR || n === sdWeather.EVENT_SD_EXCAVATION || n === sdWeather.EVENT_COUNCIL_BOMB ||
-			n === sdWeather.EVENT_COUNCIL_PORTAL || n === sdWeather.EVENT_MOTHERSHIP_CONTAINER )
+			n === sdWeather.EVENT_COUNCIL_PORTAL || n === sdWeather.EVENT_MOTHERSHIP_CONTAINER || n === sdWeather.EVENT_TASK_ASSIGNMENT )*/
+		if ( n === sdWeather.EVENT_TASK_ASSIGNMENT )
 		return true;
 		
 		return false;
@@ -399,7 +425,7 @@ class sdWeather extends sdEntity
 		let allowed_event_ids = ( sdWorld.server_config.GetAllowedWorldEvents ? sdWorld.server_config.GetAllowedWorldEvents() : undefined ) || sdWeather.supported_events;
 				
 		if ( allowed_event_ids.indexOf( sdWeather.EVENT_QUAKE ) !== -1 && sdWorld.server_config.ForceEarthquakesIfPossible() ) // Only if allowed
-		this._daily_weather_events = [ sdWeather.EVENT_QUAKE ]; // Always enable earthquakes so ground can regenerate
+		this._daily_weather_events.push( sdWeather.EVENT_QUAKE ); // Always enable earthquakes so ground can regenerate
 
 		let disallowed_ones = ( sdWorld.server_config.GetDisallowedWorldEvents ? sdWorld.server_config.GetDisallowedWorldEvents() : [] );
 				
@@ -419,7 +445,7 @@ class sdWeather extends sdEntity
 			//let old_n = n;
 			//let daily_event_count = Math.min( allowed_event_ids.length, sdWorld.server_config.GetAllowedWorldEventCount ? sdWorld.server_config.GetAllowedWorldEventCount() : 6 );
 			let is_already_enabled = false;
-			let weather_event_count = Math.min( allowed_event_ids.length, ~~(Math.random() * 2 ) ); // Up to 2 events, can also be 0
+			let weather_event_count = Math.min( allowed_event_ids.length, ~~( ( 1 - Math.pow( Math.random(), 2 ) ) * 4 ) ); // Up to 2 events, can also be 0
 			let time = 1000;
 			while ( weather_event_count > 0 && time > 0 )
 			{
@@ -449,10 +475,11 @@ class sdWeather extends sdEntity
 		this._daily_sd_task_events = [];
 		
 		let allowed_event_ids = ( sdWorld.server_config.GetAllowedWorldEvents ? sdWorld.server_config.GetAllowedWorldEvents() : undefined ) || sdWeather.supported_events;
+	
+		if ( allowed_event_ids.indexOf( sdWeather.EVENT_TASK_ASSIGNMENT ) !== -1 ) // Only if allowed
+		this._daily_sd_task_events.push( sdWeather.EVENT_TASK_ASSIGNMENT ); // Always enable EVENT_TASK_ASSIGNMENT
 
 		let disallowed_ones = ( sdWorld.server_config.GetDisallowedWorldEvents ? sdWorld.server_config.GetDisallowedWorldEvents() : [] );
-				
-		// allowed_event_ids = [ 8 ]; // Hack
 				
 		for ( let d = 0; d < allowed_event_ids.length; d++ )
 		if ( disallowed_ones.indexOf( allowed_event_ids[ d ] ) !== -1 )
@@ -566,6 +593,8 @@ class sdWeather extends sdEntity
 	
 		let instances = params.count[ 0 ] + ~~( Math.random() * ( params.count[ 1 ] - params.count[ 0 ] ) );
 		
+		let check_player_distance = ( params.allow_near_player ) ? false : true;
+		
 		while ( instances > 0 )
 		{
 			let spawn_params = params.params ? params.params : { x:0, y:0 };
@@ -584,19 +613,23 @@ class sdWeather extends sdEntity
 			{
 				let x,y,i;
 				let tr = 1000;
+				let tr_tot = tr;
 				do
 				{
 					let place_onto = sdEntity.GetRandomEntity(); // Can be null if random entity is being removed
+					
+					if ( near_entity )
+					if ( tr > tr_tot - 100 )
+					{
+						place_onto = near_entity;
+					}
 					
 					// Give up if there is no entities in world at all
 					if ( sdEntity.entities.length === 0 )
 					if ( tr > 0 )
 					tr = 0;
 					
-					if ( place_onto )
-					if ( place_onto.is( sdBlock ) )
-					if ( place_onto.DoesRegenerate() )
-					if ( place_onto._natural )
+					if ( ( place_onto && place_onto.is( sdBlock ) && place_onto.DoesRegenerate() && place_onto._natural ) || ( near_entity && place_onto === near_entity ) )
 					{
 						// Old approach triggers sdDeepSleep way too much and spawns entities where they would not matter all that much
 						//x = sdWorld.world_bounds.x1 + Math.random() * ( sdWorld.world_bounds.x2 - sdWorld.world_bounds.x1 );
@@ -607,8 +640,16 @@ class sdWeather extends sdEntity
 							let morph = Math.random();
 							let morph2 = Math.random();
 							
-							x = place_onto.x + ( place_onto._hitbox_x1 - aerial_radius ) * morph + ( place_onto._hitbox_x2 + aerial_radius ) * ( 1 - morph );
-							y = place_onto.y + ( place_onto._hitbox_y1 - aerial_radius ) * morph2 + ( place_onto._hitbox_y2 ) * ( 1 - morph2 );
+							if ( near_entity && place_onto === near_entity )
+							{
+								x = place_onto.x + ( place_onto._hitbox_x1 - params.group_radius ) * morph + ( place_onto._hitbox_x2 + params.group_radius ) * ( 1 - morph );
+								y = place_onto.y + ( place_onto._hitbox_y1 - params.group_radius ) * morph2 + ( place_onto._hitbox_y2 + params.group_radius ) * ( 1 - morph2 );
+							}
+							else
+							{
+								x = place_onto.x + ( place_onto._hitbox_x1 - aerial_radius ) * morph + ( place_onto._hitbox_x2 + aerial_radius ) * ( 1 - morph );
+								y = place_onto.y + ( place_onto._hitbox_y1 - aerial_radius ) * morph2 + ( place_onto._hitbox_y2 ) * ( 1 - morph2 );
+							}
 						}
 						else
 						{
@@ -629,9 +670,10 @@ class sdWeather extends sdEntity
 						ok = false;
 				
 						if ( ok )
-						if ( sdBaseShieldingUnit.TestIfPointIsOutsideOfBSURanges( x, y ) )
+						//if ( sdBaseShieldingUnit.TestIfPointIsOutsideOfBSURanges( x, y ) )
 						if ( dog.CanMoveWithoutDeepSleepTriggering( x, y, -32 ) )
 						if ( dog.CanMoveWithoutOverlap( x, y, 0 ) )
+						if ( sdBaseShieldingUnit.IsMobSpawnAllowed( x, y ) )
 						if ( params.aerial || !dog.CanMoveWithoutOverlap( x, y + 5, 0 ) )
 						if ( params.aerial || sdWorld.last_hit_entity )
 						if ( params.aerial || ( sdWorld.last_hit_entity.GetClass() === 'sdBlock' && sdWorld.last_hit_entity.DoesRegenerate() && sdWorld.last_hit_entity._natural ) )
@@ -639,10 +681,11 @@ class sdWeather extends sdEntity
 								x + dog._hitbox_x1 - 16, 
 								y + dog._hitbox_y1 - 16, 
 								x + dog._hitbox_x2 + 16, 
-								y + dog._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + dog._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 
+							if ( check_player_distance )
 							for ( i = 0; i < sdWorld.sockets.length; i++ )
 							if ( sdWorld.sockets[ i ].character )
 							{
@@ -659,6 +702,12 @@ class sdWeather extends sdEntity
 								dog.x = x;
 								dog.y = y;
 								sdWorld.UpdateHashPosition( dog, false ); // Prevent inersection with other ones
+								
+								if ( params.spawn_effect )
+								{
+									sdSound.PlaySound({ name:'teleport', x:dog.x, y:dog.y, volume:0.1, pitch:0.75 });
+									sdWorld.SendEffect({ x:dog.x, y:dog.y, type:sdEffect.TYPE_TELEPORT });
+								}
 								
 								if ( params.group_radius > 0 )
 								{
@@ -693,7 +742,7 @@ class sdWeather extends sdEntity
 			for ( var i = 0; i < sdCharacter.characters.length; i++ )
 			if ( !sdCharacter.characters[ i ]._is_being_removed )
 			if ( sdCharacter.characters[ i ]._ai )
-			if ( sdCharacter.characters[ i ]._ai_team === 0 || sdCharacter.characters[ i ]._ai_team === 6 )
+			if ( ( sdCharacter.characters[ i ]._ai_team === 0 || sdCharacter.characters[ i ]._ai_team === 6 ) && sdCharacter.characters[ i ]._voice.variant !== 'clone' )
 			{
 				//if ( sdCharacter.characters[ i ].title === 'Star Defender' || sdCharacter.characters[ i ].title === 'Criminal Star Defender' )
 				//ais++;
@@ -711,7 +760,7 @@ class sdWeather extends sdEntity
 							target: sdCharacter.characters[ i ],
 							//extract_target: 1, // This let's the game know that it needs to draw arrow towards target. Use only when actual entity, and not class ( Like in CC tasks) needs to be LRTP extracted.
 							mission: sdTask.MISSION_LRTP_EXTRACTION,
-							difficulty: 0.14,
+							difficulty: 0.4,
 							//lrtp_ents_needed: 1,
 							title: 'Rescue Star Defender',
 							description: 'It seems that one of our soldiers is nearby and needs help. You should rescue the soldier and extract him to the mothership!'
@@ -730,7 +779,7 @@ class sdWeather extends sdEntity
 							target: sdCharacter.characters[ i ],
 							//extract_target: 1, // This let's the game know that it needs to draw arrow towards target. Use only when actual entity, and not class ( Like in CC tasks) needs to be LRTP extracted.
 							mission: sdTask.MISSION_LRTP_EXTRACTION,
-							difficulty: 0.14,
+							difficulty: 0.4,
 							//lrtp_ents_needed: 1,
 							title: 'Arrest Star Defender',
 							description: 'It seems that one of criminals is nearby and needs to answer for their crimes. Arrest them and bring them to the mothership, even if it means bringing the dead body!'
@@ -784,7 +833,7 @@ class sdWeather extends sdEntity
 							x + ent._hitbox_x1 - 16, 
 							y + ent._hitbox_y1 - 64, 
 							x + ent._hitbox_x2 + 16, 
-							y + ent._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+							y + ent._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 					{
 						let proper_distnace = true;
 
@@ -835,7 +884,7 @@ class sdWeather extends sdEntity
 					x + ent._hitbox_x1 - 16, 
 					y + ent._hitbox_y1 - 116, 
 					x + ent._hitbox_x2 + 16, 
-					y + ent._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+					y + ent._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 			{
 				let proper_distnace = true;
 										
@@ -1214,7 +1263,7 @@ class sdWeather extends sdEntity
 				steps_max-- 
 			)
 		{
-			if ( sdWorld.CheckWallExists( x, yy, null, null, [ 'sdBlock', 'sdDoor', 'sdWater' ] ) )
+			if ( sdWorld.CheckWallExists( x, yy, null, null, sdWeather.rain_hit_class_list ) )
 			{
 				if ( !sdWorld.last_hit_entity ) // sdDeepSleep or world edge likely
 				if ( y - yy > 64 ) // Not on edge between 2 sdDeepSleep areas
@@ -1245,7 +1294,7 @@ class sdWeather extends sdEntity
 				return false;
 			}
 			
-			if ( sdWorld.CheckWallExists( x, yy, null, null, [ 'sdBG', 'sdTheatre' ] ) )
+			if ( sdWorld.CheckWallExists( x, yy, null, null, sdWeather.rain_background_walls ) )
 			{
 				space_until_premature_true = consider_sky_open_height;
 			}
@@ -1644,7 +1693,7 @@ class sdWeather extends sdEntity
 									x + portal._hitbox_x1 - 8, 
 									y + portal._hitbox_y1 - 8, 
 									x + portal._hitbox_x2 + 8, 
-									y + portal._hitbox_y2 + 8, null, null, [ 'sdWater' ], null ) )
+									y + portal._hitbox_y2 + 8, null, null, sdWeather.water, null ) )
 							{
 								portal.x = x;
 								portal.y = y;
@@ -1680,7 +1729,10 @@ class sdWeather extends sdEntity
 				class: sdSpider,
 				params: { _ai_team: 2, type: spider_type },
 				near_entity: near_ent,
-				group_radius: group_rad
+				group_radius: group_rad,
+				
+				allow_near_player: true,
+				spawn_effect: true
 
 			});
 			
@@ -1701,7 +1753,10 @@ class sdWeather extends sdEntity
 				near_entity: near_ent,
 				group_radius: group_rad,
 				unlimited_range: inf_range,
-				target: target_ent
+				target: target_ent,
+				
+				allow_near_player: true,
+				spawn_effect: true
 
 			});
 			
@@ -1742,7 +1797,10 @@ class sdWeather extends sdEntity
 						aerial: true,
 						store_ents: character_ents,
 						near_entity: near_ent,
-						group_radius: group_rad
+						group_radius: group_rad,
+				
+						allow_near_player: true,
+						spawn_effect: true
 
 					});
 					for ( let i = 0; i < character_ents.length; i++ ) // Cycle through spawned humanoids
@@ -1819,7 +1877,7 @@ class sdWeather extends sdEntity
 								x + obelisk._hitbox_x1 - 16, 
 								y + obelisk._hitbox_y1 - 16, 
 								x + obelisk._hitbox_x2 + 16, 
-								y + obelisk._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + obelisk._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 										
@@ -1970,7 +2028,7 @@ class sdWeather extends sdEntity
 								x + anticrystal._hitbox_x1 - 16, 
 								y + anticrystal._hitbox_y1 - 16, 
 								x + anticrystal._hitbox_x2 + 16, 
-								y + anticrystal._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + anticrystal._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 									
@@ -2092,7 +2150,7 @@ class sdWeather extends sdEntity
 				//let drones_tot = Math.min( 8 ,Math.ceil( ( Math.random() * 2 * sdWorld.GetPlayingPlayersCount() ) ) );
 				
 				let drone_type = ( Math.random() < 0.075 ) ? 12 /*Sarronian Mender*/ : ( Math.random() < 0.175 ) ? 4 /*Sarronian Carrier*/
-						: ( Math.random() < 0.30 ) ? 12 /*Sarronian Gauss*/ : ( Math.random() < 0.50 ) ? 3 /*Sarronian*/ : ( Math.random() < 0.70 ) ? 15 /*Zektaron Corvette*/
+						: ( Math.random() < 0.30 ) ? 13 /*Sarronian Gauss*/ : ( Math.random() < 0.50 ) ? 3 /*Sarronian*/ : ( Math.random() < 0.70 ) ? 15 /*Zektaron Corvette*/
 						: ( Math.random() < 0.95 ) ? 14 /*Zektaron*/ : 16 /*Zektaron Hunter*/;
 						
 				let drones = 0;
@@ -2178,7 +2236,7 @@ class sdWeather extends sdEntity
 								x + council_bomb._hitbox_x1 - 16, 
 								y + council_bomb._hitbox_y1 - 16, 
 								x + council_bomb._hitbox_x2 + 16, 
-								y + council_bomb._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + council_bomb._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 									
@@ -2303,7 +2361,7 @@ class sdWeather extends sdEntity
 								x + erthal_beacon._hitbox_x1 - 16, 
 								y + erthal_beacon._hitbox_y1 - 16, 
 								x + erthal_beacon._hitbox_x2 + 16, 
-								y + erthal_beacon._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + erthal_beacon._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 									
@@ -2433,7 +2491,7 @@ class sdWeather extends sdEntity
 		}
 		if ( r === sdWeather.EVENT_CRYSTAL_BLOCKS ) // Put crystal shards in a 30 blocks
 		{
-			for ( let j = 0; j < 30; j++ )
+			for ( let j = 0; j < 10; j++ ) // EG: 10 shards now but these may occasionally have crystals, and generally be of higher tier maybe too
 			{
 				for ( let tr = 0; tr < 100; tr++ )
 				{
@@ -2469,7 +2527,7 @@ class sdWeather extends sdEntity
 			if ( sdCharacter.characters[ i ]._ai )
 			if ( sdCharacter.characters[ i ]._ai_team === 0 || sdCharacter.characters[ i ]._ai_team === 6 )
 			{
-				if ( sdCharacter.characters[ i ].title === 'Star Defender' || sdCharacter.characters[ i ].title === 'Criminal Star Defender' )
+				if ( ( sdCharacter.characters[ i ].title === 'Star Defender' || sdCharacter.characters[ i ].title === 'Criminal Star Defender' ) && sdCharacter.characters[ i ]._voice.variant !== 'clone' )
 				ais++;
 			}
 
@@ -2570,7 +2628,7 @@ class sdWeather extends sdEntity
 								target: character_entity,
 								//extract_target: 1, // This let's the game know that it needs to draw arrow towards target. Use only when actual entity, and not class ( Like in CC tasks) needs to be LRTP extracted.
 								mission: sdTask.MISSION_LRTP_EXTRACTION,
-								difficulty: 0.14,
+								difficulty: 0.4,
 								//lrtp_ents_needed: 1,
 								title: 'Arrest Star Defender',
 								description: 'It seems that one of criminals is nearby and needs to answer for their crimes. Arrest them and bring them to the mothership, even if it means bringing the dead body!'
@@ -2585,7 +2643,7 @@ class sdWeather extends sdEntity
 								target: character_entity,
 								//extract_target: 1, // This let's the game know that it needs to draw arrow towards target. Use only when actual entity, and not class ( Like in CC tasks) needs to be LRTP extracted.
 								mission: sdTask.MISSION_LRTP_EXTRACTION,
-								difficulty: 0.14,
+								difficulty: 0.4,
 								//lrtp_ents_needed: 1,
 								title: 'Rescue Star Defender',
 								description: 'It seems that one of our soldiers is nearby and needs help. You should rescue the soldier and extract him to the mothership!'
@@ -2712,18 +2770,30 @@ class sdWeather extends sdEntity
 					drones++;
 				}
 				if ( drones < this._max_drone_count ) // Sometimes it can go a little over the cap, can be changed later if needed.
-				sdWeather.SimpleSpawner({
+				{
+					sdWeather.SimpleSpawner({
+						count: [ 2, 3 ],
+						class: sdDrone,
+						params: { _ai_team: 7, type: sdDrone.DRONE_SETR },
+						aerial: true,
+						near_entity: near_ent,
+						group_radius: group_rad,
+						unlimited_range: inf_range,
+						target: target_ent
 
-					count: [ 3, 6 ],
-					class: sdDrone,
-					params: { _ai_team: 7, type: sdDrone.DRONE_SETR },
-					aerial: true,
-					near_entity: near_ent,
-					group_radius: group_rad,
-					unlimited_range: inf_range,
-					target: target_ent
+					});
+					sdWeather.SimpleSpawner({
+						count: [ 1, 3 ],
+						class: sdDrone,
+						params: { _ai_team: 7, type: sdDrone.DRONE_SETR_SCOUT },
+						aerial: true,
+						near_entity: near_ent,
+						group_radius: group_rad,
+						unlimited_range: inf_range,
+						target: target_ent
 
-				});
+					});
+				}
 				
 			}
 			else
@@ -2771,7 +2841,12 @@ class sdWeather extends sdEntity
 		}
 		if ( r === sdWeather.EVENT_CRYSTALS_MATTER ) // Task which tells players to deliver "X" amount of max matter worth of crystals.
 		{
-			let player_count = sdWorld.GetPlayingPlayersCount();
+			let player_count = Math.max( 1, sdWorld.GetPlayingPlayersCount() );
+			
+			let value_required = 5120 + ( 1280 * player_count );
+			
+			let difficulty = value_required / ( 5120 * 3 ) * 1.2 / player_count; // 20% profit for doing task if converted into crystal rewards
+			
 			for ( let i = 0; i < sdWorld.sockets.length; i++ ) // Create the tasks
 			{
 				sdTask.MakeSureCharacterHasTask({ 
@@ -2780,9 +2855,8 @@ class sdWeather extends sdEntity
 					//target: 'sdCrystal',
 					lrtp_class_proprty_value_array: [ 'sdCrystal' ],
 					mission: sdTask.MISSION_LRTP_EXTRACTION,
-					difficulty: 0.2,
-					//lrtp_ents_needed: 10240 + ( 2560 * player_count ), // 12300 matter requirement for 1 player, although progress counts for all players I think
-					lrtp_matter_capacity_needed: 5120 + ( 1280 * player_count ), // 6300 matter requirement for 1 player, although progress counts for all players I think
+					difficulty: difficulty,
+					lrtp_matter_capacity_needed: value_required, // 6300 matter requirement for 1 player, although progress counts for all players I think
 					title: 'Teleport crystals',
 					time_left: 30 * 60 * 15,
 					for_all_players: true, // This task lets everyone contribute towards it's completion
@@ -2843,7 +2917,7 @@ class sdWeather extends sdEntity
 							x + amphid._hitbox_x1 - 16, 
 							y + amphid._hitbox_y1 - 16, 
 							x + amphid._hitbox_x2 + 16, 
-							y + amphid._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+							y + amphid._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 							
@@ -2928,7 +3002,7 @@ class sdWeather extends sdEntity
 						executer: sdWorld.sockets[ i ].character,
 						lrtp_class_proprty_value_array: [ 'sdLandScanner', 'scanned_ents', 350 ],
 						mission: sdTask.MISSION_LRTP_EXTRACTION,
-						difficulty: 0.14,
+						difficulty: 0.3,
 						lrtp_matter_capacity_needed: 1,
 						title: 'Planet scan',
 						time_left: 30 * 60 * 15,
@@ -2938,7 +3012,7 @@ class sdWeather extends sdEntity
 		}
 		if ( r === sdWeather.EVENT_FLESH_DIRT ) // Ground fleshify start from random block
 		{
-			for ( let tr = 0; tr < 100; tr++ )
+			/*for ( let tr = 0; tr < 100; tr++ )
 			{
 				let i = Math.floor( Math.random() * sdEntity.entities.length );
 				
@@ -2957,7 +3031,7 @@ class sdWeather extends sdEntity
 				{
 					break;
 				}
-			}
+			}*/
 		}
 		if ( r === sdWeather.EVENT_COUNCIL_PORTAL ) // Spawn a Council portal machine anywhere on the map outside player views which summons a portal in 15 minutes or more, depending on player count.
 		{
@@ -3017,20 +3091,33 @@ class sdWeather extends sdEntity
 			while ( instances < instances_tot && ais < 1 ) // Capped to 1 on map, but will try to spawn it multiple times if it fails
 			{
 
-				let character_entity = new sdCharacter({ x:0, y:0, _ai_enabled:sdCharacter.AI_MODEL_AGGRESSIVE, s:250 });
+				/*let character_entity = new sdCharacter({ x:0, y:0, _ai_enabled:sdCharacter.AI_MODEL_AGGRESSIVE, s:250 });
 
-				sdEntity.entities.push( character_entity );
+				sdEntity.entities.push( character_entity );*/
+				let [ character_entity, gun ] = sdFactionTools.SpawnCharacter( sdFactionTools.FT_FSB, { x:0,y:0 } );
 
 				{
 					if ( !sdWeather.SetRandomSpawnLocation( character_entity ) )
 					{
 						character_entity.remove();
 						character_entity._broken = false;
+						
+						if ( gun )
+						{
+							gun.remove();
+							gun._broken = false;
+						}
+						
 						break;
 					}
 					else
 					{
+						if ( gun )
 						{
+							gun.x = character_entity.x;
+							gun.y = character_entity.y;
+						}
+						/*{
 
 							//sdWorld.UpdateHashPosition( ent, false );
 							let falkok_settings;
@@ -3068,7 +3155,8 @@ class sdWeather extends sdEntity
 							character_entity._jetpack_power = 4;
 
 							break;
-						}
+						}*/
+						break;
 					}
 				}
 
@@ -3320,7 +3408,7 @@ class sdWeather extends sdEntity
 								x + ent._hitbox_x1 - 16, 
 								y + ent._hitbox_y1 - 16, 
 								x + ent._hitbox_x2 + 16, 
-								y + ent._hitbox_y2 + 16, null, null, [ 'sdWater' ], null ) )
+								y + ent._hitbox_y2 + 16, null, null, sdWeather.water, null ) )
 						{
 							let proper_distnace = true;
 									
@@ -3462,43 +3550,9 @@ class sdWeather extends sdEntity
 
 					//sdEntity.entities.push( converter );
 					
-					let converter = [];
+					sdShurgConverter.DoSequentualSpawn( true );
 					
-					sdWeather.SimpleSpawner({
-						
-						count: [ 1, 1 ],
-						class: sdShurgConverter,
-						store_ents: converter,
-						aerial: true,
-						aerial_radius: 128
-						
-					})
 					
-					if ( converter.length > 0 ) // Successful spawn?
-					{
-						sdShurgConverter.ents_left = 2; // 3 converters to destroy
-
-						sdWeather.SimpleSpawner({
-				
-						count: [ 2, 2 ],
-						class: sdShurgTurret,
-						aerial:true,
-						aerial_radius: 128,
-						group_radius: 800,
-						near_entity: converter[ 0 ]
-			
-						});
-						sdWeather.SimpleSpawner({
-
-						count: [ 3, 3 ],
-						class: sdShurgTurret,
-						params: { type: sdShurgTurret.TURRET_FLYING }, // 2 flying turrets
-						group_radius: 400,
-						near_entity: converter[ 0 ],
-						aerial: true
-			
-						});
-					}
 
 					//instances++;
 				}
@@ -3735,7 +3789,7 @@ class sdWeather extends sdEntity
 
 					count: [ 1, 1 ],
 					class: sdDrone,
-					params: { type: 17, _ai_team: 0, unlimited_range: true },
+					params: { type: sdDrone.DRONE_SD_BG, _ai_team: 0, unlimited_range: true },
 					aerial: true,
 					store_ents: ents,
 					near_entity: near_ent,
@@ -3753,7 +3807,7 @@ class sdWeather extends sdEntity
 							mission: sdTask.MISSION_PROTECT_ENTITY,
 							protect_type: 1, // 0 = wait until objective is completed, 1 = entity must survive for the time given on Task
 							time_left: 30 * 60 * 5, // 5 minutes
-							difficulty: 0.075,
+							difficulty: 0.2,
 							title: 'Protect a drone',
 							description: 'We found an old drone stockpile and would like to see if these drones are efficient enough on this planet to complement your and other Star Defenders objective. We deployed it near you, all you have to do is make sure it does not get destroyed too quickly.'
 						});
@@ -3858,6 +3912,340 @@ class sdWeather extends sdEntity
 			else
 			this._time_until_event = Math.random() * 30 * 60 * 0; // Quickly switch to another event
 		}
+		if ( r === sdWeather.EVENT_CUBE_BOSS )
+		{
+
+			if ( sdCube.alive_red_cube_counter < sdCube.GetMaxAllowedCubesOfKind( sdCube.KIND_RED ) )
+			sdWeather.SimpleSpawner({
+
+				count: [ 1, 1 ],
+				class: sdCube,
+				params: { kind: sdCube.KIND_RED },
+				
+				aerial: true,
+				aerial_radius: 800,
+				
+				near_entity: near_ent,
+				group_radius: group_rad
+			});
+		}
+		if ( r === sdWeather.EVENT_TASK_ASSIGNMENT )
+		{
+			if ( sdWorld.online_characters.length > 0 )
+			for ( let i = 0; i < 3; i++ )
+			{
+				let character = sdWorld.online_characters[ ~~( Math.random() * sdWorld.online_characters.length ) ];
+				
+				let tasks_total = 0;
+				
+				sdTask.PerformActionOnTasksOf( character, ( task )=>
+				{ 
+					if ( task._tag === 'RandomEventTask' )
+					tasks_total++; 
+				} );
+				
+				if ( tasks_total < 5 )
+				sdWeather.GivePlayerTask( character );
+			}
+		}
+		if ( r === sdWeather.EVENT_STALKER ) 
+		{
+			sdWeather.SimpleSpawner({
+				
+				count: [ 1, 1 ],
+				class: sdStalker,
+				
+				aerial: true,
+				aerial_radius: 800,
+				near_entity: near_ent,
+				group_radius: group_rad
+				
+			});
+		}
+	}
+	static GivePlayerTask( initiator ) // AssignTasks // GiveTasks
+	{
+		//if ( initiator.cc_id === this._net_id ) // Only if you're part of the team // Maybe it is not needed for now
+		{
+			let task_count = 1; // Up to 3 tasks at once, unlimited time ( was 1 task, 20 minutes )
+			for ( let i = 0; i < task_count; i++ )
+			{
+				let num_ents = 1;
+				let difficulty_per_entity = 1;
+				
+				let template = { 
+					similarity_hash:'EXTRACT-X', 
+					executer: initiator,
+					mission: sdTask.MISSION_LRTP_EXTRACTION,
+					difficulty: 0,// ( 0.167 * 1 ), // Is set later
+					title: 'Extract X',
+					time_left: -1,
+					lrtp_ents_needed: 1,
+					lrtp_class_proprty_value_array: [ 'sdCrystal' ],
+					description: 'Extract X by using a long range teleporter.',
+					tag: 'RandomEventTask'
+				};
+				
+				let task_options = [];
+				
+				task_options.push(()=>
+				{
+					num_ents = 10 + Math.round( Math.random() * 20 );
+					
+					difficulty_per_entity *= 0.05;
+					
+					template.title = 'Extract natural crystals';
+					//template.description = 'Extract natural crystals by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`The natural crystals are highly crucial for stabilizing the dimensional rifts. Use the long-range teleporter to extract them so they can be used where they are needed.`,
+						`These natural crystals hold the key to a cure for the Crimson Rot. Use the long-range teleporter to extract them and save countless lives.`,
+						`A rival faction is also aware of these potent natural crystals. Use the long-range teleporter to secure them. The more we'll have - the less they'll get.`,
+						`Energy sources on Mothership are getting low. It is only a matter of time before these natural crystals will become our last hope. Use the long-range teleporter to retrieve them.`,
+						`Some of these natural crystals react to certain frequencies. Use the long-range teleporter, but be careful not to trigger an unforeseen reaction during extraction.`,
+						`Some of recent natural crystals are covered in strange symbols. Use the long-range teleporter to extract them and we'll try to decipher the message they hold.`,
+						`We could really use any natural crystals that are located in your area. Use the long-range teleporter to extract them, but be prepared for extreme conditions.`,
+						`The long-range teleporter is still experimental. Use it to extract some natural crystals - it is one of ways we could calibrate it.`,
+						`Your scientific expertise is needed. These natural crystals exhibit unique properties. Use the long-range teleporter to extract them for study and analysis.`,
+						`Hey, it appears somebody would really like to buy natural crystals of any kind. Do you think you could send some by using long-range teleporter?`,
+						`These natural crystals are powerful, but their extraction could harm the local ecosystem. Use the long-range teleporter, but consider the consequences of your actions.`,
+						`Form 37B is required for the extraction of natural crystals. Please use the long-range teleporter, ensuring all safety protocols are followed and the correct paperwork is filed.`,
+						`You'll never guess what they are using these crystals for nowadays. Could you fine some and send using long-range teleporter?`
+					]);
+					
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'is_natural', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 5 + Math.round( Math.random() * 5 );
+					
+					difficulty_per_entity *= 0.1;
+					
+					template.title = 'Extract natural large crystals';
+					//template.description = 'Extract natural large crystals by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`These natural large crystals resonate with a unique energy signature. Use the long-range teleporter to extract them so we can study their potential applications.`,
+						`These are some of the largest natural crystals ever discovered. Their unique formation makes them incredibly valuable. Use the long-range teleporter hovers to carefully extract them.`,
+						`These natural large crystals are still growing. Use the long-range teleporter to extract samples and understand the process, which might hold the key to push human science further.`,
+						`These natural large crystals are exceptionally pure. Use the long-range teleporter to extract them. Their clarity is essential for a delicate rituals of Guanakos we keep on the Mothership.`,
+						`These natural large crystals were used by a lost civilization. Use the long-range teleporter to extract them and perhaps uncover secrets of their past.`,
+						`According to our alien friends, these natural large crystals are connected to the dream realm. Use the long-range teleporter to extract them, but beware of the influence they might exert.`,
+						`These natural large crystals seem to pulse with life. Use the long-range teleporter to extract them, but approach with caution – they may be more than just minerals.`,
+						`Use the long-range teleporter with hovers and extreme precision to avoid destabilizing natural large crystals during extraction. The larger the better.`,
+						`Extract the shimmering, natural large crystals using the long-range teleporter. Many citizens of our space cities deem their otherworldly glow mesmerizing.`,
+						`Use the long-range teleporter to extract the massive crystalline structures. Their intricate geometry defies natural explanation and must be studied.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'is_big', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 2 );
+					
+					difficulty_per_entity *= 0.3;
+					
+					template.title = 'Extract Mitosis crystals';
+					//template.description = 'Extract natural large crystals by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`Could you get us Mitosis crystals using a long range teleporter? We need to study whether they hold they key to unlimited matter.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'speciality', 1, 'speciality_tier', 40 ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 1;
+					
+					difficulty_per_entity *= 1;
+					
+					template.title = 'Extract artificial 40 matter capacity crystal';
+					template.description = sdWorld.AnyOf(
+					[
+						`Do you think you could get us an artificial 40 matter capacity crystal? Send us one by using a long range teleporter.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'is_natural', false, 'matter_max', 40 ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 1;
+					
+					difficulty_per_entity *= 3;
+					
+					template.title = 'Extract anti-crystal';
+					template.description = sdWorld.AnyOf(
+					[
+						`We need an anti-crystal. Send us one by using a long range teleporter.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'is_anticrystal', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 1;
+					
+					difficulty_per_entity *= 6;
+					
+					template.title = 'Extract soul taking crystal';
+					//template.description = 'Extract natural large crystals by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`Could you get us soul taking crystal using a long range teleporter? Be very careful, they kill Star Defenders way too often.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'speciality', 1, 'speciality_tier', 2560 ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 2 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract slugs';
+					template.description = 'Extract slugs to the mothership by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdSlug', 'is_alive', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 2 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract alien batteries';
+					template.description = 'Extract alien batteries to the mothership by using a long range teleporter, so we can study them.';
+					template.lrtp_class_proprty_value_array = [ 'sdJunk', 'type', 1 ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 2 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract lost particle containers';
+					template.description = 'Extract lost particle containers to the mothership, so we can see how we can utilize them.';
+					template.lrtp_class_proprty_value_array = [ 'sdJunk', 'type', 2 ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 4 + Math.round( Math.random() * 4 );
+					
+					difficulty_per_entity *= 0.1;
+					
+					template.title = 'Extract crab crystals';
+					template.description = 'Extract crab crystals by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdCrystal', 'is_crab', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 3 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract cube shards';
+					template.description = 'Extract cube shards by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdGun', 'class', sdGun.CLASS_CUBE_SHARD ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 3 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract metal shards';
+					template.description = 'Extract metal shards by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdGun', 'class', sdGun.CLASS_METAL_SHARD ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 1 );
+					
+					difficulty_per_entity *= 0.3;
+					
+					template.title = 'Extract Cubes';
+					template.description = 'Extract Cubes by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdCube' ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 2 );
+					
+					difficulty_per_entity *= 0.3;
+					
+					template.title = 'Extract Virus entities';
+					//template.description = 'Extract Virus entities by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`A large Virus entity has been detected. These creatures can split into multiple, dangerous smaller forms. Use the long-range teleporter to extract some of them for anti-virus studying.`,
+						`Large Virus entities pose a significant threat due to their ability to multiply. Extract this specimen using the long-range teleporter before it splits and infests the area.`,
+						`Virus entities are known to 'split and conquer.' These specimens must be extracted via long-range teleporter and their whole sworm studied.`,
+						`We need a sample of the Virus entity's goo. Use the long-range teleporter to extract these specimens for research.`,
+						`This Virus entity is a unique biological specimen. Use the long-range teleporter to extract it for study and analysis.`,
+						`Virus entities thrive in liquid environments. This one needs to be extracted using the long-range teleporter before it contaminates the water supply.`,
+						`The genetic material of the Virus entity could be valuable. Extract a few specimens using the long-range teleporter for genetic analysis.`,
+						`These Virus entities exhibits unusual characteristics. Use the long-range teleporter to extract it – it may be a new strain.`,
+						`Understanding Virus biology is crucial for our defense. Extract this entity using the long-range teleporter for research purposes.`,
+						`Virus entity extraction requires Level 3 Biohazard Clearance. Use the long-range teleporter following established protocol.`,
+						`Warning: Virus entity may be gooey. Use long-range teleporter with extreme caution. Wear protective gear.`,
+						`Virus entities are a perfect practive material. Send some of them using long-range teleporter for a reward.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdVirus', 'is_alive', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 1;
+					
+					difficulty_per_entity *= 1;
+					
+					template.title = 'Extract Octopus';
+					//template.description = 'Extract Virus entities by using a long range teleporter.';
+					template.description = sdWorld.AnyOf(
+					[
+						`We registed multiple Octopuses being burrowed in your area. Its long tentacle poses a significant threat. Use the long-range teleporter to extract one of them carefully, avoiding its grasp.`,
+						`Octopus creatures are known to swallow weapons whole. Use the long-range teleporter to extract one of them before it consumes any more Star Defender tech.`,
+						`Beware! Octopuses can swallow Star Defenders. A particularly large specimen needs to be extracted. Use the long-range teleporter, but prioritize Star Defender safety during the process.`,
+						`We need to understand Octopus biology. Use the long-range teleporter to extract a live specimen for research.`,
+						`Octopus tentacle material has unique properties. Extract an Octopus using the long-range teleporter for study, which may lead to new defensive technologies.`,
+						`These Octopus aliens exhibit unusual behaviors. Use the long-range teleporter to extract one of them for analysis.`,
+						`What are the Octopuses doing here? Extract this specimen using the long-range teleporter. Studying it may reveal their intentions.`,
+						`Use the long-range teleporter to extract the tentacled horror that lurks beneath the surface.`,
+						`This Octopus appears to be a living bio-weapon. Use the long-range teleporter to extract it with extreme caution.`,
+						`The alien menace known as the Octopus must be contained. Use the long-range teleporter to extract it.`,
+						`Oh, I see you are doing great. How about another Octopus? It is just what we need. Use the long-range teleporter and try not to get eaten.`
+					]);
+					template.lrtp_class_proprty_value_array = [ 'sdOctopus', 'is_alive', true ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 2 + Math.round( Math.random() * 3 );
+					
+					difficulty_per_entity *= 0.4;
+					
+					template.title = 'Extract fallen missiles';
+					template.description = 'Extract fallen missiles by using a long range teleporter.';
+					template.lrtp_class_proprty_value_array = [ 'sdAsteroid', 'type', sdAsteroid.TYPE_MISSILE ];
+				});
+				task_options.push(()=>
+				{
+					num_ents = 1 + Math.floor( Math.random() * 3 );
+					
+					difficulty_per_entity *= 0.2;
+					
+					template.title = 'Extract cryo-substance barrel';
+					template.description = 'We need you to extract a highly-concentrated cryo-substance barrel. The Science Division wants to use it to fix the Mothership\'s main server\'s AI unit, which is currently so hot it\'s trying to melt through the floor.';
+					template.lrtp_class_proprty_value_array = [ 'sdJunk', 'type', sdJunk.TYPE_FREEZE_BARREL ];
+				});
+				/*
+				task_options.push(()=>
+				{
+				});
+				*/
+				
+				sdWorld.AnyOf( task_options )();
+				
+				template.similarity_hash = 'EXTRACT-' + template.lrtp_class_proprty_value_array.join('-'); // Prevent overriding - it will cause lrtp_class_proprty_value_array and title/desciption mismatch
+				template.difficulty = difficulty_per_entity * num_ents;
+				template.lrtp_ents_needed = num_ents;
+
+				sdTask.MakeSureCharacterHasTask( template );
+			}
+		}
 	}
 	onThink( GSPEED ) // Class-specific, if needed
 	{
@@ -3868,7 +4256,8 @@ class sdWeather extends sdEntity
 			this.x2 = sdWorld.world_bounds.x2;
 			this.y2 = sdWorld.world_bounds.y2;
 			
-			//return; // Hack
+			if ( this._chill )
+			return;
 			
 			this._next_wanderer_spawn -= GSPEED;
 			
@@ -3970,11 +4359,7 @@ class sdWeather extends sdEntity
 				
 				if ( proper_distnace )
 				{
-					let ent = new sdAsteroid({ 
-						x:xx, 
-						y:sdWorld.world_bounds.y1 + 16, // 1 was too high, asteroids would self destruct
-					});
-					sdEntity.entities.push( ent );
+					sdEntity.Create( sdAsteroid, { x:xx, y:sdWorld.world_bounds.y1 + 16 } );
 				}
 
 				this._asteroid_timer = 0;
@@ -3989,7 +4374,7 @@ class sdWeather extends sdEntity
 
 
 			this._missile_timer += GSPEED;
-			if ( this._missile_timer > 60 * 30 / ( ( sdWorld.world_bounds.x2 - sdWorld.world_bounds.x1 ) / 800 ) )
+			if ( this._missile_timer > 60 * 30 / ( ( sdWorld.world_bounds.x2 - sdWorld.world_bounds.x1 ) / 8000 ) )
 			{
 				let xx = sdWorld.world_bounds.x1 + Math.random() * ( sdWorld.world_bounds.x2 - sdWorld.world_bounds.x1 );
 				
@@ -4007,12 +4392,7 @@ class sdWeather extends sdEntity
 				
 				if ( proper_distnace )
 				{
-					let missile = new sdAsteroid({ 
-						x:xx, 
-						y:sdWorld.world_bounds.y1 + 16, // 1 was too high, asteroids would self destruct
-						type:sdAsteroid.TYPE_MISSILE
-					});
-					sdEntity.entities.push( missile );
+					sdEntity.Create( sdAsteroid, { x:xx, y:sdWorld.world_bounds.y1 + 16, type:sdAsteroid.TYPE_MISSILE } );
 				}
 
 				this._missile_timer = 0;
@@ -4107,10 +4487,10 @@ class sdWeather extends sdEntity
 												// Without these offsets trees and bushes will spawn in air and on the left of the dirt blocks.
 											}
 										}
-										let grass = new sdGrass({ x:e.x + x_off, y:e.y + y_off - 16, hue:e.hue, br:e.br, filter: e.filter, block:e, variation:tree_variation });
-
-										//let grass = new sdGrass({ x:e.x, y:e.y - 16, hue:e.hue, br:e.br, filter: e.filter, block:e });
-										sdEntity.entities.push( grass );
+										//let grass = new sdGrass({ x:e.x + x_off, y:e.y + y_off - 16, hue:e.hue, br:e.br, filter: e.filter, block:e, variation:tree_variation });
+										//sdEntity.entities.push( grass );
+										
+										let grass = sdEntity.Create( sdGrass, { x:e.x + x_off, y:e.y + y_off - 16, hue:e.hue, br:e.br, filter: e.filter, block:e, variation:tree_variation } );
 
 										//grass.snowed = this.snow;
 										grass.SetSnowed( this.snow );
@@ -4157,7 +4537,7 @@ class sdWeather extends sdEntity
 								{
 									// Try to find higher block since they are too tiny sky tracer might skip them
 									
-									let arr = [ 'sdBlock' ];
+									let arr = sdWeather.blocks;
 									
 									let tr = 0;
 									while ( true )
@@ -4183,6 +4563,7 @@ class sdWeather extends sdEntity
 									}
 									
 									if ( e )
+									if ( e.y - 4 > sdWorld.world_bounds.y1 )
 									{
 										if ( e.material === sdBlock.MATERIAL_SNOW && e.height < 16 )
 										{
@@ -4196,23 +4577,40 @@ class sdWeather extends sdEntity
 										}
 										else
 										{
-											// Spawn snow?
-											let snow_block = new sdBlock({ x:xx, y:e.y - 4, width: 16, height: 4, material: sdBlock.MATERIAL_SNOW, filter:'saturate(0.1)', br:400, hue:180 });
-											snow_block._hea = snow_block._hmax = 10;
+											if ( e.material === sdBlock.MATERIAL_SNOW )
+											{
+												// Do not spawn extra snow on top of 16x16 snow blocks
+											}
+											else
+											{
+												// Spawn snow?
+												/*let snow_block = new sdBlock({ x:xx, y:e.y - 4, width: 16, height: 4, material: sdBlock.MATERIAL_SNOW, filter:'saturate(0.1)', br:400, hue:180 });
+												snow_block._hea = snow_block._hmax = 10;
 
-											sdEntity.entities.push( snow_block );
-											sdWorld.UpdateHashPosition( snow_block, false );
+												sdEntity.entities.push( snow_block );
+												sdWorld.UpdateHashPosition( snow_block, false );*/
+
+												let snow_block = sdEntity.Create( sdBlock, { x:xx, y:e.y - 4, width: 16, height: 4, material: sdBlock.MATERIAL_SNOW, filter:'saturate(0.1)', br:400, hue:180 } );
+												snow_block._hea = snow_block._hmax = 10;
+											}
 										}
 									}
 								}
 								else
-								if ( Math.random() < 0.01 )
+								//if ( Math.random() < 0.1 )
 								{
 									if ( !this.matter_rain )
 									{
-										let water = new sdWater({ x:xx, y:Math.floor(e.y/16)*16 - 16, type: this.acid_rain ? sdWater.TYPE_ACID : sdWater.TYPE_WATER });
+										/*let water = new sdWater({ x:xx, y:Math.floor(e.y/16)*16 - 16, type: this.acid_rain ? sdWater.TYPE_ACID : sdWater.TYPE_WATER });
 										sdEntity.entities.push( water );
 										sdWorld.UpdateHashPosition( water, false ); // Without this, new water objects will only discover each other after one first think event (and by that time multiple water objects will overlap each other). This could be called at sdEntity super constructor but some entities don't know their bounds by that time
+										*/
+										sdEntity.Create( sdWater, { 
+											x:xx, 
+											y:Math.floor(e.y/16)*16 - 16, 
+											type: this.acid_rain ? sdWater.TYPE_ACID : sdWater.TYPE_WATER,
+											volume: 0.25 
+										} );
 									}
 								}
 							}
@@ -4269,10 +4667,10 @@ class sdWeather extends sdEntity
 			let quake_logic_percentage_done = 1; // Gets lower if earthquake can't perform enough of planned iterations (usually due to performance risks)
 			
 			//if ( this.quake_intensity >= 100 )
-			if ( this.quake_intensity >= 60 )
+			if ( this.quake_intensity >= 60 || sdWeather.debug_quake )
 			//for ( let i = 0; i < 100; i++ ) // Hack
 			{
-				let ent = new sdBlock({ x:0, y:0, width:16, height:16 });
+				let ent = new sdBlock({ x:0, y:0, width:16, height:16, skip_hiberstate_and_hash_update:true });
 				
 				//sdEntity.entities.push( ent );
 				
@@ -4319,7 +4717,7 @@ class sdWeather extends sdEntity
 									{
 										let r = ~~( Math.random() * 4 );
 
-										x = Math.floor( place_near.x / 16 ) * 16;
+										/*x = Math.floor( place_near.x / 16 ) * 16;
 										y = Math.floor( place_near.y / 16 ) * 16;
 
 										if ( r === 0 )
@@ -4333,14 +4731,47 @@ class sdWeather extends sdEntity
 										else
 										if ( r === 3 )
 										y += 16;
+									
+										if ( place_near._merged )
+										y += Math.round( Math.random( ( place_near.height - 16 ) / 16 ) ) * 16; // Select random height without unmerging
+										*/
+										x = Math.floor( ( place_near.x + (place_near.width-16) * Math.random() ) / 16 ) * 16;
+										y = Math.floor( ( place_near.y + (place_near.height-16) * Math.random() ) / 16 ) * 16;
+										
+										if ( r === 0 )
+										x = place_near.x - 16;
+										else
+										if ( r === 1 )
+										x = place_near.x + place_near.width;
+										else
+										if ( r === 2 )
+										y = place_near.y - 16;
+										else
+										if ( r === 3 )
+										y = place_near.y + place_near.height;
 									}
 								}
 								else
 								if ( place_near.is( sdBG ) && place_near._natural )
 								{
-									x = Math.floor( place_near.x / 16 ) * 16;
+									/*if ( place_near._merged ) // Merged backgrounds?
+									{
+										let bgs = place_near.UnmergeBackgrounds(); // Unmerge
+										if ( bgs.length > 0 )
+										place_near = bgs[ Math.floor( Math.random() * bgs.length ) ]; // Select random background
+									}
+									*/
+									// Unmerging and removal is done when the block is already placed, instead of on BG detection to prevent unnecessary unmerging and unhibernation
+									/*x = Math.floor( place_near.x / 16 ) * 16;
 									y = Math.floor( place_near.y / 16 ) * 16;
+									if ( place_near._merged )
+									y += Math.round( Math.random( ( place_near.height - 16 ) / 16 ) ) * 16; // Select random height without unmerging
+									*/
+								   
+									x = Math.floor( ( place_near.x + (place_near.width-16) * Math.random() ) / 16 ) * 16;
+									y = Math.floor( ( place_near.y + (place_near.height-16) * Math.random() ) / 16 ) * 16;
 								}
+								
 							}
 							
 							if ( x < sdWorld.world_bounds.x1 )
@@ -4390,7 +4821,7 @@ class sdWeather extends sdEntity
 									continue;
 								}
 								
-								if ( sdWorld.inDist2D_Boolean( data.x, data.y, x, y, 100 ) )
+								if ( sdWorld.inDist2D_Boolean( data.x, data.y, x, y, data.radius ) )
 								{
 									//hits++;
 									//if ( hits >= 3 )
@@ -4405,8 +4836,6 @@ class sdWeather extends sdEntity
 						if ( !should_skip )
 						for ( let num = 0; num < sdTzyrgAbsorber.absorbers.length; num++ )
 						{
-							//let di_absorbers = sdWorld.Dist2D( x, y, sdTzyrgAbsorber.absorbers[ num ].x, sdTzyrgAbsorber.absorbers[ num ].y );
-							//if ( di_absorbers < 800 ) // if it's too close to an absorber
 							if ( sdWorld.inDist2D_Boolean( x, y, sdTzyrgAbsorber.absorbers[ num ].x, sdTzyrgAbsorber.absorbers[ num ].y, sdTzyrgAbsorber.effect_radius ) )
 							{
 								should_skip = true;
@@ -4424,9 +4853,7 @@ class sdWeather extends sdEntity
 
 							if ( ent.CanMoveWithoutOverlap( x, y, 0.0001, sdWeather.CrystalRemovalByEearthquakeFilter ) )
 							{
-								//if ( sdWorld.last_hit_entity === null || ( sdWorld.last_hit_entity.GetClass() === 'sdBlock' && sdWorld.last_hit_entity.DoesRegenerate() ) )
-								//if ( !sdWorld.CheckWallExistsBox( x, y, x+16, y+16, null, null, [ 'sdBlock', 'sdWater' ] ) ) // Extra check for spike blocks and water/lava
-								if ( !sdWorld.CheckWallExistsBox( x + 0.0001, y + 0.0001, x+16 - 0.0001, y+16 - 0.0001, null, null, [ 'sdBlock', 'sdWater' ] ) ) // Extra check for spike blocks and water/lava (liquids are caught by CrystalRemovalByEearthquakeFilter though now)
+								if ( !sdWorld.CheckWallExistsBox( x + 0.0001, y + 0.0001, x+16 - 0.0001, y+16 - 0.0001, null, null, sdWeather.blocks_and_water ) ) // Extra check for spike blocks and water/lava (liquids are caught by CrystalRemovalByEearthquakeFilter though now)
 								{
 									let ent_above = null;
 									let ent_above_exists = false;
@@ -4465,13 +4892,13 @@ class sdWeather extends sdEntity
 										}
 									}
 
-									if ( ent_above_exists || ent_below_exists )
+									//if ( ent_above_exists || ent_below_exists ) This prevents spawns on natural backgrounds
 									{
 										let bg_nature = true; // Or nothing or world border
 										let bg_nature_ent = null;
 
 										sdWorld.last_hit_entity = null;
-										if ( sdWorld.CheckWallExistsBox( x+1, y+1, x + 16-1, y + 16-1, null, null, [ 'sdBG' ], null ) )
+										if ( sdWorld.CheckWallExistsBox( x+1, y+1, x + 16-1, y + 16-1, null, null, sdBG.as_class_list, null ) )
 										if ( sdWorld.last_hit_entity )
 										{
 											if ( sdWorld.last_hit_entity.material !== sdBG.MATERIAL_GROUND )
@@ -4490,6 +4917,7 @@ class sdWeather extends sdEntity
 											}
 											else
 											{
+												// Maybe it's better to do this on background removal instead?
 												bg_nature_ent = sdWorld.last_hit_entity;
 											}
 										}
@@ -4499,7 +4927,22 @@ class sdWeather extends sdEntity
 											function ClearPlants()
 											{
 												if ( bg_nature_ent )
-												bg_nature_ent.remove();
+												{
+													if ( bg_nature_ent._merged === false ) // Not a merged background?
+													bg_nature_ent.remove();
+													else
+													{
+														// Unmerge, check which BG was last then remove
+														bg_nature_ent.UnmergeBackgrounds(); // Unmerge backgrounds, then retry
+														if ( sdWorld.CheckWallExistsBox( x+1, y+1, x + 16-1, y + 16-1, null, null, sdBG.as_class_list, null ) )
+														if ( sdWorld.last_hit_entity )
+														bg_nature_ent = sdWorld.last_hit_entity;
+														else
+														bg_nature_ent = null; // Probably can't happen but just in case
+														if ( bg_nature_ent ) // Just in case
+														bg_nature_ent.remove();
+													}
+												}
 
 												if ( ent_below_exists )
 												if ( ent_below )
@@ -4519,38 +4962,9 @@ class sdWeather extends sdEntity
 											if ( sdWorld.AttemptWorldBlockSpawn( x, y ) )
 											{
 												ClearPlants();
-												this._quake_temporary_not_regen_near.push({ x:x, y:y, until:sdWorld.time + 500 });
+												this._quake_temporary_not_regen_near.push({ x:x, y:y, radius:50 + Math.random() * 50, until:sdWorld.time + 250 + Math.random() * 250 });
 												//break; Do not skip anymore - spawn as many as there can be
 											}
-
-											/*let xx = Math.floor( x / 16 );
-											let from_y = sdWorld.GetGroundElevation( xx );
-
-											if ( y >= from_y )
-											{
-												let r = sdWorld.FillGroundQuad( x, y, from_y, false, true );
-
-												if ( r )
-												ClearPlants();
-
-												break;
-											}
-											else
-											if ( y === from_y - 8 )
-											{
-												y += 8;
-												let r = sdWorld.FillGroundQuad( x, y, from_y, true, true );
-
-												if ( r )
-												ClearPlants();
-
-												break;
-											}
-											else
-											{
-											}*/
-
-
 										}
 									}
 
@@ -4561,7 +4975,7 @@ class sdWeather extends sdEntity
 							if ( sdWeather.last_crystal_near_quake )
 							{
 								sdWorld.last_hit_entity = null;
-								if ( sdWorld.CheckWallExistsBox( x - 4, y + 4, x+16 + 4, y+16 + 4, null, null, [ 'sdBlock' ] ) && 
+								if ( sdWorld.CheckWallExistsBox( x - 4, y + 4, x+16 + 4, y+16 + 4, null, null, sdWeather.blocks ) && 
 										( sdWorld.last_hit_entity === null || 
 											(	sdWorld.last_hit_entity.is( sdBlock ) && 
 												sdWorld.last_hit_entity.DoesRegenerate() && 
@@ -4582,7 +4996,7 @@ class sdWeather extends sdEntity
 											sdWeather.last_crystal_near_quake.DamageWithEffect( 20 );
 											
 											// Do not damage something multiple times in a row
-											this._quake_temporary_not_regen_near.push({ x:x, y:y, until:sdWorld.time + 500 });
+											this._quake_temporary_not_regen_near.push({ x:x, y:y, radius:100, until:sdWorld.time + 500 });
 										}
 									}
 								}
@@ -4828,10 +5242,11 @@ class sdWeather extends sdEntity
 			ctx.filter = 'none';
 		}
 	}
-	/*onBeforeRemove()
+	onBeforeRemove()
 	{
-		debugger;
-	}*/
+		if ( sdWeather.only_instance === this )
+		sdWeather.only_instance = null;
+	}
 	onRemove() // Class-specific, if needed
 	{
 		if ( sdWeather.only_instance === this )

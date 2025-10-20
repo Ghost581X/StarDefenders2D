@@ -2,6 +2,7 @@
 import sdWorld from '../sdWorld.js';
 import sdEntity from './sdEntity.js';
 import sdBlock from './sdBlock.js';
+import sdEffect from './sdEffect.js';
 import sdSound from '../sdSound.js';
 
 import sdRenderer from '../client/sdRenderer.js';
@@ -14,6 +15,8 @@ class sdTheatre extends sdEntity
 		sdTheatre.img_theatre = sdWorld.CreateImageFromFile( 'theatre' );
 		
 		sdTheatre.theatres = [];
+		
+		sdTheatre.music_lock_until = 0;
 		
 		sdTheatre.programs = {
 			'PONG':
@@ -503,7 +506,8 @@ class sdTheatre extends sdEntity
 				else
 				{
 					div.style.display = 'block';
-
+					
+					sdTheatre.music_lock_until = sdWorld.time + 1000;
 
 					div.style.left = ( ( this.x + this.hitbox_x1 - ( sdWorld.camera.x ) ) * scale + sdRenderer.screen_width / 2 ) / sdRenderer.resolution_quality + 'px';
 					div.style.top = ( ( this.y + this.hitbox_y1 - ( sdWorld.camera.y ) ) * scale + sdRenderer.screen_height / 2 + Math.sin( sdWorld.time / 30 ) * sdWorld.entity_classes.sdWeather.only_instance.quake_intensity / 100 ) / sdRenderer.resolution_quality + 'px';
@@ -559,7 +563,7 @@ class sdTheatre extends sdEntity
 	onRemove() // Class-specific, if needed
 	{
 		if ( this._broken )
-		sdWorld.BasicEntityBreakEffect( this, 10 );
+		sdWorld.BasicEntityBreakEffect( this, 20, 3, 0.75, 0.75, 'glass12', sdEffect.TYPE_GLASS );
 	
 		this.onRemoveAsFakeEntity();
 	}

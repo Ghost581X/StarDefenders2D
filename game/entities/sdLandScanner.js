@@ -15,6 +15,7 @@ import sdVirus from './sdVirus.js';
 import sdQuickie from './sdQuickie.js';
 import sdCrystal from './sdCrystal.js';
 import sdBlock from './sdBlock.js';
+import sdStatusEffect from './sdStatusEffect.js';
 
 import sdRenderer from '../client/sdRenderer.js';
 
@@ -76,6 +77,7 @@ class sdLandScanner extends sdEntity
 		this.scanned_ents = 0; // How many unique dirt has this scanner scanned?
 		this._removed_in = params.removed_in || 30 * 60 * 15; // 15 minutes until it destroys since it's a task only entity, or less depending on when player claims the entity
 		
+		this._intel_receiver = null;
 		//this._last_shield_sound_played = 0;
 		// 1 slot
 		
@@ -146,57 +148,52 @@ class sdLandScanner extends sdEntity
 
 		if ( this.enabled )
 		{
-			//this.sx = 0;
-			//this.sy = 0;
-			if ( this.charge < 100 )
-			this.charge = Math.min( 100, this.charge + GSPEED * 0.5 );
-
-			this._next_beep -= GSPEED;
-			if ( this._next_beep < 0 )
+			if ( sdWorld.is_server )
 			{
-				this._next_beep = 20;
-				//sdSound.PlaySound({ name:'overlord_cannon3', x:this.x, y:this.y, volume:1, pitch:5 });
-				sdSound.PlaySound({ name:'council_teleport', x:this.x, y:this.y, volume:0.2, pitch:6 * ( 1 + this.charge / 100 ) });
-			}
+				if ( this.charge < 100 )
+				this.charge = Math.min( 100, this.charge + GSPEED * 1 );
 
-			if ( this.charge >= 100 )
-			{
-				let blocks = sdWorld.GetAnythingNear( this.x, this.y + 76, sdLandScanner.scan_distance, null, [ 'sdBlock' ] );
-				
-				
-				for ( let i = 0; i < blocks.length; i++ ) // Protect nearby entities inside base unit's radius
+				this._next_beep -= GSPEED;
+				if ( this._next_beep < 0 )
 				{
-					if ( blocks[ i ].DoesRegenerate() )
-					{
-						/*
-						let scanned_before = false;
-						for ( let j = 0; j < this._scanned_entities.length; j++ )
-						{
-							if ( blocks[ i ] === this._scanned_entities[ j ] ) // Has this block been scanned before by this land scnaner?
-							scanned_before = true;
-						}
-						if ( scanned_before === false && this.scanned_ents < 350 ) // 350 is max capacity
-						{
-							this.scanned_ents++;
-							this._scanned_entities.push( blocks[ i ] );
-						}*/
+					this._next_beep = 30;
+					sdSound.PlaySound({ name:'council_teleport', x:this.x, y:this.y, volume:0.2, pitch:6 * ( 1 + this.charge / 300 ) });
+				}
 
-						let scanned_before = false;
-						for ( let j = 0; j < this._scanned_entity_net_ids.length; j++ )
+				if ( this.charge >= 100 )
+				{
+					let blocks = sdWorld.GetAnythingNear( this.x, this.y + 76, sdLandScanner.scan_distance, null, [ 'sdBlock' ] );
+					
+					
+					for ( let i = 0; i < blocks.length; i++ ) // Protect nearby entities inside base unit's radius
+					{
+						if ( blocks[ i ].DoesRegenerate() || blocks[ i ]._merged )
 						{
-							if ( blocks[ i ]._net_id === this._scanned_entity_net_ids[ j ] ) // Has this block been scanned before by this land scnaner?
-							scanned_before = true;
-						}
-						if ( scanned_before === false && this.scanned_ents < 350 ) // 350 is max capacity
-						{
-							this.scanned_ents++;
-							this._scanned_entity_net_ids.push( blocks[ i ]._net_id );
+							if ( this._intel_receiver )
+							if ( blocks[ i ]._contains_class )
+							blocks[ i ].ApplyStatusEffect({ type: sdStatusEffect.TYPE_STEERING_WHEEL_PING, c:[ 2, 2, 2 ], observer: this._intel_receiver });
+
+							let scanned_before = false;
+							for ( let j = 0; j < this._scanned_entity_net_ids.length; j++ )
+							{
+								if ( blocks[ i ]._net_id === this._scanned_entity_net_ids[ j ] ) // Has this block been scanned before by this land scnaner?
+								scanned_before = true;
+							}
+							if ( scanned_before === false && this.scanned_ents < 350 ) // 350 is max capacity
+							{
+								if ( blocks[ i ]._merged ) // Merged blocks should probably just count all the merged blocks
+								this.scanned_ents = Math.min( 350, this.scanned_ents + Math.round( blocks[ i ].height / 16 ) );
+								else
+								this.scanned_ents++;
+							
+								this._scanned_entity_net_ids.push( blocks[ i ]._net_id );
+							}
 						}
 					}
+					this.matter = Math.max( 0, this.matter - 100 );
+					this.charge = 0;
+					this.SetScanState();
 				}
-				this.matter = Math.max( 0, this.matter - 100 );
-				this.charge = 0;
-				this.SetScanState();
 			}
 		}
 		else
@@ -286,7 +283,10 @@ class sdLandScanner extends sdEntity
 				{
 					{
 						if ( this.matter >= 100 )
-						this.SetScanState( true );
+						{
+							this._intel_receiver = exectuter_character;
+							this.SetScanState( true );
+						}
 						else
 						executer_socket.SDServiceMessage( 'Land scanner needs at least 100 matter' );
 					}

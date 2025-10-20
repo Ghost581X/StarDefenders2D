@@ -5,6 +5,7 @@ import sdEntity from './sdEntity.js';
 import sdCharacter from './sdCharacter.js';
 import sdWater from './sdWater.js';
 import sdBlock from './sdBlock.js';
+import sdEffect from './sdEffect.js';
 import sdCrystal from './sdCrystal.js';
 
 class sdStorageTank extends sdEntity
@@ -173,27 +174,31 @@ class sdStorageTank extends sdEntity
 		if ( this.type === sdStorageTank.TYPE_PORTABLE )
 		this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 	}
-	DrawHUD( ctx, attached ) // foreground layer
+
+	get title()
 	{
 		let t = 'Empty';
 
-		if ( this.liquid.type === sdWater.TYPE_ANTIMATTER )
-		t = 'Antimatter';
-		else
-		if ( this.liquid.type === sdWater.TYPE_ESSENCE )
-		t = 'Liquid Essence';
-		else
-		if ( this.liquid.type === sdWater.TYPE_TOXIC_GAS )
-		t = 'Toxic gas';
-		else
-		if ( this.liquid.type === sdWater.TYPE_LAVA )
-		t = 'Lava';
-		else
-		if ( this.liquid.type === sdWater.TYPE_ACID )
-		t = 'Acid';
-		else
-		if ( this.liquid.type === sdWater.TYPE_WATER )
-		t = 'Water';
+		if ( this.liquid )
+		{
+			if ( this.liquid.type === sdWater.TYPE_ANTIMATTER )
+			t = 'Antimatter';
+			else
+			if ( this.liquid.type === sdWater.TYPE_ESSENCE )
+			t = 'Liquid Essence';
+			else
+			if ( this.liquid.type === sdWater.TYPE_TOXIC_GAS )
+			t = 'Toxic gas';
+			else
+			if ( this.liquid.type === sdWater.TYPE_LAVA )
+			t = 'Lava';
+			else
+			if ( this.liquid.type === sdWater.TYPE_ACID )
+			t = 'Acid';
+			else
+			if ( this.liquid.type === sdWater.TYPE_WATER )
+			t = 'Water';
+		}
 
 		if ( this.type === sdStorageTank.TYPE_PORTABLE )
 		{
@@ -202,8 +207,17 @@ class sdStorageTank extends sdEntity
 			else
 			t = 'Portable ' + t.toLowerCase();
 		}
+		
+		t += ' storage tank';
+		
+		return t;
+	}
+	
+	DrawHUD( ctx, attached ) // foreground layer
+	{
+		let t = this.title;
 
-		sdEntity.TooltipUntranslated( ctx, T(t + ' tank') + ' ( ' + Math.round(this.liquid.amount) + ' / ' + (this.liquid.max) + ' )', 0, ( this.liquid.extra > 0 ? -20 : -10 ) );
+		sdEntity.TooltipUntranslated( ctx, T( t ) + ' ( ' + Math.round(this.liquid.amount) + ' / ' + (this.liquid.max) + ' )', 0, ( this.liquid.extra > 0 ? -20 : -10 ) );
 
 		if ( this.liquid.extra > 0 )
 		{
@@ -265,7 +279,7 @@ class sdStorageTank extends sdEntity
 				);
 			}
 			*/
-			sdWorld.BasicEntityBreakEffect( this, 10 );
+			sdWorld.BasicEntityBreakEffect( this, 10, 6, 0.5, 1, 'glass12', sdEffect.TYPE_GLASS );
 		}
 	}
 	
@@ -304,17 +318,6 @@ class sdStorageTank extends sdEntity
 		}
 	}
 
-	get title()
-	{
-		if ( this.type === sdStorageTank.TYPE_PORTABLE )
-		return T('Portable storage tank');
-
-		if ( this.type === sdStorageTank.TYPE_LARGE )
-		return T('Storage tank');
-
-		return 'undefined';
-	}
-
 	MeasureMatterCost()
 	{
 	//	return 0; // Hack
@@ -335,7 +338,7 @@ class sdStorageTank extends sdEntity
 				if ( parameters_array[ 0 ] >= 0 )
 				if ( parameters_array[ 0 ] < 3 )
 				{
-					if ( this.GetAccurateDistance( exectuter_character.x, exectuter_character.y ) < 32 )
+					if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) < 32 )
 					{
 						if ( command_name === 'TRANSFER_MODE' )
 						{
@@ -357,7 +360,7 @@ class sdStorageTank extends sdEntity
 		if ( !this._is_being_removed )
 		if ( exectuter_character )
 		if ( exectuter_character.hea > 0 )
-		if ( this.GetAccurateDistance( exectuter_character.x, exectuter_character.y ) < 20 )
+		if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) < 20 )
 		{
 			this.AddContextOption( 'Balance contents', 'TRANSFER_MODE', [ 0 ] );
 			this.AddContextOption( 'Only give contents', 'TRANSFER_MODE', [ 1 ] );

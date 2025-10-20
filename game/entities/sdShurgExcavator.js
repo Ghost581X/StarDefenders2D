@@ -157,7 +157,7 @@ class sdShurgExcavator extends sdEntity
 
 	onThink( GSPEED ) // Class-specific, if needed
 	{
-		let in_water = sdWorld.CheckWallExists( this.x, this.y, null, null, sdWater.water_class_array );
+		let in_water = sdWater.all_swimmers.has( this );
 		
 		let pathfinding_result = null;
 		
@@ -263,7 +263,7 @@ class sdShurgExcavator extends sdEntity
 	
 					sdEntity.entities.push( bullet_obj );
 								
-					sdSound.PlaySound({ name:'cut_droid_attack', x:this.x, y:this.y, volume: 0.33, pitch:2 });
+					sdSound.PlaySound({ name:'cut_droid_attack', x:this.x, y:this.y, volume: 0.1, pitch:2 });
 				}
 			}
 		}

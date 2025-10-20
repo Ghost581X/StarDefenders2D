@@ -731,9 +731,14 @@ let enf_once = true;
 	globalThis.sdGun = sdGun;
 	globalThis.sdBullet = sdBullet;
 	globalThis.sdWeather = sdWeather;*/
+
+	globalThis.manually_disconnected = false;
 	
 	globalThis.sdWorld = sdWorld;
+	
 	globalThis.socket = socket;
+	globalThis.online_socket = socket;
+	
 	globalThis.sdRenderer = sdRenderer;
 	globalThis.sdSound = sdSound;
 	globalThis.sdShop = sdShop;
@@ -782,21 +787,29 @@ let enf_once = true;
 	
 	function ClearWorld()
 	{
+		//let arr = [];
+		
 		for ( var i = 0; i < sdEntity.entities.length; i++ )
 		{
-			sdEntity.entities[ i ].remove();
-			sdEntity.entities[ i ]._broken = false;
+			let e = sdEntity.entities[ i ];
+			e.remove();
+			e._broken = false;
+			
+			//arr.push( e );
 		}
 
 		for ( var i = 0; i < sdEntity.global_entities.length; i++ )
 		{
-			sdEntity.global_entities[ i ].remove();
+			let e = sdEntity.global_entities[ i ];
+			e.remove();
 		}
 
 		sdWorld.my_entity = null;
 		sdWorld.my_entity_net_id = undefined;
 		
 		sdWorld.EraseWorldBounds();
+		
+		//sdEntity.BulkRemoveEntitiesFromEntitiesArray( arr, true );
 		
 		//trace( sdTask.tasks );
 		//setTimeout( ()=>{ trace( sdTask.tasks ) }, 1 );
@@ -839,7 +852,7 @@ let enf_once = true;
 		{
 			if ( globalThis.connection_established )
 			{
-				trace( 'onConnect called extra time, igonred.' );
+				trace( 'onConnect called extra time, ignored.' );
 				return;
 			}
 		
@@ -894,20 +907,26 @@ let enf_once = true;
 
 			if ( sdWorld.my_entity )
 			{
-				sdWorld.my_entity.Say( sdWorld.GetAny([
-					'Disconnected.'
-					//'Connection has been lost... Can you believe that?',
-					//'No connection to server',
-					//'Connection to server has gone'
-				]), true, true );
-				
-				setTimeout( ()=>{
-					
-					//if ( !globalThis.connection_established )
+				if ( globalThis.manually_disconnected )
+				{
+					globalThis.manually_disconnected = false;
 					sdWorld.Stop();
-				
-				}, 4000 );
+				}
+				else
+				{
+					sdWorld.my_entity.Say( sdWorld.GetAny([
+						'Disconnected.'
+					]), true, true );
+
+					setTimeout( ()=>{
+
+						sdWorld.Stop();
+
+					}, 2000 );
+				}
 			}
+		
+			ClearWorld();
 
 			//alert('Connection was lost');
 
@@ -921,7 +940,13 @@ let enf_once = true;
 						globalThis.reconnecter = null;
 					}
 					else
-					socket.connect();
+					{
+						if ( sdWorld.is_singleplayer )
+						{
+						}
+						else
+						socket.connect();
+					}
 
 				}, 1000 );
 			}
@@ -1020,6 +1045,12 @@ let enf_once = true;
 					
 				let SetEntProp = ( ent, prop, v )=>
 				{
+					/*if ( prop === 'driver_of' )
+					{
+						trace( '.driver_of = ' + v );
+						debugger;
+					}*/
+					
 					if ( typeof v === 'object' && v !== null && !( v instanceof Array ) && v._net_id !== undefined )
 					{
 						let ent2 = sdEntity.entities_by_net_id_cache_map.get( v._net_id );
@@ -1051,6 +1082,25 @@ let enf_once = true;
 					let arr = snapshot[ i ];
 					
 					let _net_id = arr[ 0 ];
+					
+					if ( _net_id === -1 || _net_id === -2 ) // Invisible chunk
+					{
+						let hash = arr[ 1 ];
+						
+						let info = sdRenderer.visible_chunks.get( hash );
+						
+						if ( info === undefined )
+						sdRenderer.visible_chunks.set( hash, { x:arr[ 2 ], y:arr[ 3 ], opacity:1, last_active_visibility_time:sdWorld.time, active_visibility:( _net_id === -1 ) } );
+						else
+						{
+							info.active_visibility = ( _net_id === -1 );
+							if ( info.active_visibility )
+							info.last_active_visibility_time = sdWorld.time;
+						}
+						
+						continue;
+					}
+					
 					let properties_or_class_or_deletion_info = arr[ 1 ];
 					
 					let ent = sdEntity.entities_by_net_id_cache_map.get( _net_id );
@@ -1147,6 +1197,8 @@ let enf_once = true;
 							
 							if ( class_id_or_deletion_info === -1 )
 							{
+								//trace( 'Removing entity at .y = ' + ent.y );
+								
 								// remove
 								ent.remove();
 								ent._broken = false;
@@ -1215,7 +1267,7 @@ let enf_once = true;
 						sdEntity.TrackPotentialYRest( ent );
 					}
 				}
-					
+				
 				/*let new_snapshot_entities = [];
 				for ( var i = 0; i < snapshot.length; i++ )
 				{
@@ -1238,6 +1290,8 @@ let enf_once = true;
 				if ( sdWorld.my_entity === null || sdWorld.my_entity_net_id !== sdWorld.my_entity._net_id )
 				sdWorld.ResolveMyEntityByNetId();
 			}
+			//if ( sdWorld.unresolved_entity_pointers.length > 0 )
+			//debugger;
 			sdWorld.SolveUnresolvedEntityPointers();
 			sdWorld.unresolved_entity_pointers = null;
 			
@@ -1251,6 +1305,9 @@ let enf_once = true;
 			{
 				sdWorld.leaders = leaders[ 0 ];
 				globalThis.players_playing = leaders[ 1 ];
+				
+				//trace( globalThis.players_playing );
+				//globalThis.EnforceChangeLog(globalThis,'players_playing');
 			}
 
 			// sd_events
@@ -1279,22 +1336,8 @@ let enf_once = true;
 					played_events.unshift( params.UC );
 				}
 
-				if ( type === 'EFF' ) // particles, chat messages
+				if ( sdWorld.AttemptServerEventHandling( type, params ) )
 				{
-					if ( typeof params.char_di !== 'undefined' )
-					{
-						//let an = Math.random() * Math.PI * 2;
-						//let xx = Math.sin( an ) * params.char_di;
-						//let yy = Math.cos( an ) * params.char_di;
-						//params.x = sdWorld.camera.x + xx;
-						//params.y = sdWorld.camera.y + yy;
-						
-						params.x = sdWorld.camera.x;
-						params.y = sdWorld.camera.y - 400/2 / sdWorld.camera.scale / 800 * sdRenderer.screen_width - 64;
-					}
-					
-					var ef = new sdEffect( params );
-					sdEntity.entities.push( ef );
 				}
 				else
 				if ( type === 'S' ) // sound
@@ -1311,10 +1354,26 @@ let enf_once = true;
 					sdSound.PlaySound( params );
 				}
 				else
+				if ( type === 'CARRY_END' )
+				{
+					let p = sdEntity.entities_by_net_id_cache_map.get( params.p );
+					let c = sdEntity.entities_by_net_id_cache_map.get( params.c );
+					if ( p && c )
+					{
+						p._previous_carrying = c;
+						p._previous_carrying_ignore_until = sdWorld.time + sdCharacter.carried_item_collision_igonre_duration;
+
+						c._last_held_by = p;
+						c._last_held_by_until = sdWorld.time + sdCharacter.carried_item_collision_igonre_duration;
+					}
+				}
+				else
 				if ( type === 'ONLINE' ) // update online stats (in-game only)
 				{
 					globalThis.players_online = params[ 0 ];
 					globalThis.players_playing = params[ 1 ];
+					
+					trace( 'Got',type,params );
 				}
 				else
 				if ( type === 'UI_REPLY' ) // update online stats (in-game only)
@@ -1386,10 +1445,13 @@ let enf_once = true;
 		});
 		
 
-		socket.on( 'SET sdWorld.my_entity._god', ( v )=>
+		socket.on( 'SET sdWorld.my_entity._god', ( v, v2 )=>
 		{
 			if ( sdWorld.my_entity )
-			sdWorld.my_entity._god = v;
+			{
+				sdWorld.my_entity._god = v;
+				sdWorld.my_entity._debug = v2;
+			}
 		});
 		socket.on( 'SET sdWorld.my_entity', ( _net_id )=>
 		{
@@ -1446,6 +1508,8 @@ let enf_once = true;
 					UpdateLanguageBar();
 				};
 				a.textContent = lang;
+				
+				if ( i !== 0 )
 				a.style.marginLeft = '10px';
 				
 				if ( lang === sdTranslationManager.language )
@@ -1457,8 +1521,9 @@ let enf_once = true;
 		UpdateLanguageBar();
 		socket.on( 'INIT', ( obj )=>
 		{
-			document.getElementById( 'game_title_text' ).textContent = T(obj.game_title);
-			document.body.style.backgroundColor = obj.backgroundColor;
+			document.getElementById( 'server_status' ).textContent = T( 'Connected to' );
+			document.getElementById( 'game_title_text' ).textContent = T( obj.game_title );
+			//document.body.style.backgroundColor = obj.backgroundColor;
 			
 			if ( obj.supported_languages )
 			supported_languages = obj.supported_languages;
@@ -1520,6 +1585,10 @@ let enf_once = true;
 			}
 		});	
 
+		socket.on( 'MENU_CHAT_UPDATE', ( obj )=>
+		{
+			onMenuChatData( obj );
+		});
 
 
 		socket.last_sync = sdWorld.time;
@@ -1545,8 +1614,9 @@ let enf_once = true;
 				sdRenderer.service_mesage = 'World simulation logic error! ' + e;
 				debugger;
 			}
-
-			const isTransportWritable = socket.io.engine &&
+			
+			const isTransportWritable = !sdWorld.is_singleplayer &&
+					                    socket.io.engine &&
 										socket.io.engine.transport &&
 										socket.io.engine.transport.writable &&
 										socket.connected;
@@ -1704,18 +1774,19 @@ let enf_once = true;
 	
 	globalThis.frame_by_frame = false;
 	
-	globalThis.DrawPreview = ( hovered_preview, forced_time, settings_container, ctx, start_btn, inputs_hash, cursor_x, cursor_y, inputs, format, hovered_color )=>
+	globalThis.DrawPreview = ( hovered_preview, forced_time, ctx, cursor_x, cursor_y, inputs, hovered_color )=>
 	{
+		let old_time = sdWorld.time;
+		//let start_btn = ;
+		
 		if ( hovered_preview )
-			sdWorld.time = forced_time;
+		sdWorld.time = forced_time;
 		
 		//sdWorld.time = 0; // Hack
 		sdWorld.GSPEED = 0.5; // Without it GSPEED may be 0 at time, which will cause ragdoll to crumble
 
 		//if ( !draw_once )
 		//return;
-
-		settings_container.style.transform = 'scale(' + Math.min( document.body.clientWidth / 1260, Math.min( document.body.clientHeight / 830, 1 ) ) + ')';
 
 		if ( !ctx.drawImageFilterCache )
 		{
@@ -1729,77 +1800,90 @@ let enf_once = true;
 		if ( !ctx.drawImageFilterCache )
 		return;
 
-		if ( globalThis.socket_io_crashed && !socket.connected )
+		//traceOnce( 'Error: start_btn text update is not ready' );
+		/*if ( globalThis.socket_io_crashed && !socket.connected )
 		start_btn.value = globalThis.socket_io_crashed;
 		else
 		{
 			let str = T('Play with {1} other players ({2} online)');
-			//start_btn.value = 'Play with ' + format( globalThis.players_playing ) + ' other players (' + format( globalThis.players_online ) + ' online)';
 			str = str.split('{1}').join( format( globalThis.players_playing ) );
 			str = str.split('{2}').join( format( globalThis.players_online ) );
 			start_btn.value = str;
-		}
+		}*/
 
-		ctx.fillStyle = '#7b3219';
-		//ctx.fillStyle = '#111111';
-		ctx.fillRect( 0, 0, 128, 128 );
+		//ctx.fillStyle = '#7b3219';
+		//ctx.fillRect( 0, 0, 128, 128 );
+		ctx.clearRect( 0, 0, 128, 128 );
 
 		ctx.save();
 
 		let ent;
+		
+		let player_settings = globalThis.GetPlayerSettings();
 
-		let preferred_entity = sdWorld.ConvertPlayerDescriptionToEntity( globalThis.GetPlayerSettings() );
+		let preferred_entity = sdWorld.ConvertPlayerDescriptionToEntity( player_settings );
+		
+		let side = 1; // -1;
 
 		if ( sdWorld.allowed_player_classes.indexOf( preferred_entity ) === -1 )
-		ent = new sdCharacter({ x:1, y:0 });
+		ent = new sdCharacter({ x:-side, y:0 });
 		else
-		ent = new sdWorld.entity_classes[ preferred_entity ]({ x:1, y:0 });
+		ent = new sdWorld.entity_classes[ preferred_entity ]({ x:-side, y:0 });
 
 
-		let ent2;
-		let ent3;
+		let ent2 = null;
+		let ent3 = null;
+		
+		if ( ent.is( sdCharacter ) )
 		{
-			ent3 = new sdGun({ x:0, y:0, class: sdGun.CLASS_PISTOL });
-			ent._inventory[ 1 ] = ent3;
-			ent3._held_by = ent;
-		}
-
-		if ( inputs_hash[ 'start_with1' ].el.checked )
-		{
-			ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_SWORD });
-			ent._inventory[ 0 ] = ent2;
-			ent2._held_by = ent;
-		}
-		else
-		/*if ( inputs_hash[ 'start_with1' ].el.checked )
-		{
-			ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_PISTOL });
-			ent._inventory[ 1 ] = ent2;
-			ent2._held_by = ent;
+			{
+				ent3 = new sdGun({ x:0, y:0, class: sdGun.CLASS_PISTOL });
+				ent._inventory[ 1 ] = ent3;
+				ent3._held_by = ent;
 			}
-		else*/
-		if ( inputs_hash[ 'start_with2' ].el.checked )
-		{
-			ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_SHOVEL });
-			ent._inventory[ 0 ] = ent2;
-			ent2._held_by = ent;
-		}	
+
+			//if ( inputs_hash[ 'start_with1' ] && inputs_hash[ 'start_with1' ].el.checked )
+			if ( player_settings.start_with1 )
+			{
+				ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_SWORD });
+				ent._inventory[ 0 ] = ent2;
+				ent2._held_by = ent;
+			}
+			else
+			/*if ( inputs_hash[ 'start_with1' ].el.checked )
+			{
+				ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_PISTOL });
+				ent._inventory[ 1 ] = ent2;
+				ent2._held_by = ent;
+				}
+			else*/
+			//if ( inputs_hash[ 'start_with2' ] && inputs_hash[ 'start_with2' ].el.checked )
+			if ( player_settings.start_with2 )
+			{
+				ent2 = new sdGun({ x:0, y:0, class: sdGun.CLASS_SHOVEL });
+				ent._inventory[ 0 ] = ent2;
+				ent2._held_by = ent;
+			}	
+		}
 
 
 		//if ( !inputs_hash[ 'start_with2' ].el.checked && !inputs_hash[ 'start_with3' ].el.checked )
 		ent.gun_slot = ( sdWorld.time % 4000 ) < 2000 ? 0 : 1;
 
 		//ent._an = Math.PI / 2;
-		ent.look_x = -1000;
+		ent.look_x = 1000 * side;
 		ent.look_y = 0;
-		ent.stands = true;
-		ent.act_x = ( ( sdWorld.time ) % 4000 > 3000 ) ? -1 : 0;
-		ent._anim_walk = ( sdWorld.time / 50 ) % 10;
-
+		
 		ent.sd_filter = sdWorld.ConvertPlayerDescriptionToSDFilter_v2( globalThis.GetPlayerSettings() );
 		ent.helmet = sdWorld.ConvertPlayerDescriptionToHelmet( globalThis.GetPlayerSettings() );
 		ent.body = sdWorld.ConvertPlayerDescriptionToBody( globalThis.GetPlayerSettings() );
 		ent.legs = sdWorld.ConvertPlayerDescriptionToLegs( globalThis.GetPlayerSettings() );
+		
+		ent.onThink( 0 ); // Drones won't look right without this
+		
+		ent.stands = true;
+		ent.act_x = ( ( sdWorld.time ) % 4000 > 3000 ) ? -1 : 0;
+		ent._anim_walk = ( sdWorld.time / 50 ) % 10;
 
 		if ( sdWorld.time % 5000 < 500 )
 		ent.pain_anim = 10 / ( sdWorld.time % 5000 ) / 500;
@@ -1807,6 +1891,9 @@ let enf_once = true;
 		if ( ( sdWorld.time + 500 ) % 2000 < 250 )
 		{
 			ent.fire_anim = Math.max( 0, 15 - ( ( sdWorld.time + 500 ) % 2000 ) / 250 );// 5 / ( ( sdWorld.time + 500 ) % 2000 ) / 250;
+
+			if ( ent3 )
+			ent3.muzzle = Math.max( 0, 3 - ( ( sdWorld.time + 500 ) % 2000 ) / 50 );
 
 			/*
 			//if ( !inputs_hash[ 'start_with2' ].el.checked && !inputs_hash[ 'start_with3' ].el.checked )
@@ -1847,40 +1934,55 @@ let enf_once = true;
 
 		ent.remove();
 		ent._remove();
+		
+		if ( ent2 )
+		{
+			ent2.remove();
+			ent2._remove();
+		}
 
-		ent2.remove();
-		ent2._remove();
-
-		ent3.remove();
-		ent3._remove();
+		if ( ent3 )
+		{
+			ent3.remove();
+			ent3._remove();
+		}
 
 		ctx.restore();
 
 		if ( hovered_preview )
 		{
 			var p = ctx.getImageData( cursor_x, cursor_y, 1, 1 ).data; 
-			var hex = "#" + ( "000000" + sdWorld.ColorArrayToHex( [ p[0], p[1], p[2] ] ) ).slice( -6 );
-
-			hovered_color = [ p[0], p[1], p[2] ];
-
-			let reset = true;
-
-			for ( let i = 0; i < inputs.length; i++ )
-			if ( inputs[ i ].el.type === 'color' )
+			
+			if ( p[ 3 ] > 0 )
 			{
-				if ( inputs[ i ].el.value === hex )
-				{
-					reset = false;
-					break;
-				}
-			}
+				var hex = "#" + ( "000000" + sdWorld.ColorArrayToHex( [ p[0], p[1], p[2] ] ) ).slice( -6 );
 
-			if ( reset )
+				hovered_color = [ p[0], p[1], p[2] ];
+
+				let reset = true;
+
+				for ( let i = 0; i < inputs.length; i++ )
+				if ( inputs[ i ].el.type === 'color' )
+				{
+					if ( inputs[ i ].el.value === hex )
+					{
+						reset = false;
+						break;
+					}
+				}
+				
+				if ( reset )
+				hovered_color = null;
+			}
+			else
 			hovered_color = null;
 		}
 
 		if ( hovered_color )
 		{
+			//ctx.fillStyle = '#ff0000';
+			//ctx.fillRect( cursor_x, cursor_y, 1, 1 );
+			
 			let image_data = ctx.getImageData( 0, 0, 128, 128 );
 			let image_data_new = ctx.getImageData( 0, 0, 128, 128 );
 
@@ -1891,6 +1993,7 @@ let enf_once = true;
 
 			function ColorMatches( i )
 			{
+				if ( image_data.data[ i+3 ] > 0 )
 				if ( image_data.data[ i   ] === hovered_color[ 0 ] )
 				if ( image_data.data[ i+1 ] === hovered_color[ 1 ] )
 				if ( image_data.data[ i+2 ] === hovered_color[ 2 ] )
@@ -1910,6 +2013,7 @@ let enf_once = true;
 					image_data_new.data[ i   ] = br;
 					image_data_new.data[ i+1 ] = br;
 					image_data_new.data[ i+2 ] = br;
+					image_data_new.data[ i+3 ] = 255;
 				}
 			}
 
@@ -1932,6 +2036,8 @@ let enf_once = true;
 		}
 
 		//draw_once = false;
+		
+		sdWorld.time = old_time;
 	};
 
 	let key_states = new sdKeyStates();
@@ -1946,6 +2052,9 @@ let enf_once = true;
 	
 	function IsGameFocused()
 	{
+		if ( sdRenderer.canvas.style.display !== 'block' )
+		return false;
+	
 		if ( document.activeElement !== sdRenderer.canvas && document.activeElement !== document.body )
 		{
 			if ( document.activeElement.contentEditable || ( document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text' ) || document.activeElement.tagName === 'TEXTAREA' )
@@ -1957,7 +2066,12 @@ let enf_once = true;
 	window.onkeydown = async ( e )=>
 	{
 		if ( !IsGameFocused() )
-		return true;
+		{
+			if ( e.key === 'Escape' )
+			GoToScreen('screen_menu');
+		
+			return true;
+		}
 	
 		if ( e.key === 'Escape' )
 		{
@@ -1973,12 +2087,18 @@ let enf_once = true;
 			else
 			if ( sdShop.open )
 			{
-				sdShop.open = false;
+				if ( sdShop.search_active )
+				{
+					sdShop.search_active = false;
+					sdShop.search_phrase = '';
+				}
+				else
+				sdShop.Close();
 			}
 			else
 			{
 				sdWorld.hovered_entity = sdWorld.my_entity;
-				sdContextMenu.Open();
+				sdContextMenu.Open( true );
 			}
 			
 			e.preventDefault();
@@ -1987,12 +2107,15 @@ let enf_once = true;
 	
 		if ( sdShop.open )
 		{
+			if ( await sdShop.KeyDown( e ) )
+			return false;
+			/*
 			if ( e.key === 'BrowserBack' )
 			{
 				sdShop.current_category = 'root';
 				e.preventDefault();
 				return false;
-			}
+			}*/
 		}
 		
 		if ( await sdChat.KeyDown( e ) )
@@ -2050,7 +2173,8 @@ let enf_once = true;
 				sdWorld.my_inputs_and_gspeeds.push( [ 1, 'Digit9' ] );
 				sdWorld.my_inputs_and_gspeeds.push( [ 0, 'Digit9' ] );
 				
-				sdShop.open = true;
+				//sdShop.open = true;
+				sdShop.Open();
 				//sdRenderer.UpdateCursor();
 			}
 			return;
@@ -2081,6 +2205,11 @@ let enf_once = true;
 		if ( !IsGameFocused() )
 		return true;
 	
+		if ( !sdChat.open )
+		{
+			sdShop.KeyPress( e );
+		}
+		
 		sdChat.KeyPress( e );
 	};
 	window.onkeyup = ( e )=>
@@ -2149,6 +2278,8 @@ let enf_once = true;
 	
 	window.onmousedown = ( e )=>
 	{
+		sdSound.AllowSound();
+		
 		if ( e.target !== sdRenderer.canvas && e.target !==	document.firstChild )
 		return;
 	
@@ -2165,7 +2296,7 @@ let enf_once = true;
 		return;
 		
 		//sdSound.allowed = true;
-		sdSound.AllowSound();
+		//sdSound.AllowSound();
 		
 		if ( sdContextMenu.MouseDown( e ) )
 		return;
@@ -2246,6 +2377,7 @@ let enf_once = true;
 		return;
 	
 		if ( !sdShop.open )
+		if ( !sdContextMenu.open )
 		if ( sdWorld.my_entity )
 		{
 			let dir = ( e.deltaY < 0 ) ? 1 : -1;
@@ -2279,8 +2411,10 @@ let enf_once = true;
 		}
 	
 		sdShop.MouseWheel( e );
+		
+		sdContextMenu.MouseWheel( e );
 	};
 	if( userAgent[0] === "Gecko" && userAgent[1] === BROWSER_GECKO )
 	window.onwheel = window.onmousewheel;
-	
+
 	socket.open(); // Same as socket.connect() it seems

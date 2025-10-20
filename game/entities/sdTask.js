@@ -5,6 +5,8 @@
 	sdStatusEffects effects could be implemented similarly
 
 */
+/* global sdSound */
+
 import sdWorld from '../sdWorld.js';
 import sdEntity from './sdEntity.js';
 import sdLongRangeTeleport from './sdLongRangeTeleport.js';
@@ -33,7 +35,7 @@ class sdTask extends sdEntity
 		
 		sdTask.completed_tasks_count = 0; // Whenever someone completes a task, this increases value by 1. Used to spawn SD Item pods
 		
-		sdTask.reward_claim_task_amount = 0.5; // was 1
+		//sdTask.reward_claim_task_amount = 0.5; // was 1 // EG: Let's not have too many multipliers all over the project
 		
 		sdTask.missions = [];
 		
@@ -60,7 +62,7 @@ class sdTask extends sdEntity
 				return -1;
 			},
 			
-			completion_condition: ( task )=>
+		letion_condition: ( task )=>
 			{
 				return false;
 			},
@@ -109,6 +111,7 @@ class sdTask extends sdEntity
 				task._approach_target_check_timer = 1; // Every 2 seconds it will check if target was approached by task executor, until it does.
 				// Players that don't get close to the objective don't get rewards now.
 				
+				task.SetBasicProgress( 0, 1 );
 			},
 			onCompletion: ( task )=>
 			{
@@ -191,7 +194,7 @@ class sdTask extends sdEntity
 				return 'Claim rewards';
 			},
 			GetDefaultDescription: ( task )=>{
-				return 'Your good performance has been noticed by the mothership. Claim rewards they are willing to send through a long range teleporter.';
+				return 'Your good performance has been noticed by the Mothership. Claim rewards they are willing to send through a long range teleporter.';
 			},
 			GetDefaultTimeLeft: ( task )=>
 			{
@@ -200,7 +203,7 @@ class sdTask extends sdEntity
 			
 			completion_condition: ( task )=>
 			{
-				if ( task._executer._task_reward_counter < sdTask.reward_claim_task_amount )
+				if ( task._executer._task_reward_counter < 1 ) //sdTask.reward_claim_task_amount )
 				return true;
 				else
 				return false;
@@ -460,6 +463,8 @@ class sdTask extends sdEntity
 				task._protect_type = params.protect_type || 0; // 0 = progress bar ( Dark matter beam projector, Long range frequency antenna ), 1 = Entity must survive for a time limit ( SD-BG drone )
 				task._approached_target = false; // Same as destroy entity tasks
 				task._approach_target_check_timer = 1;
+				
+				task.SetBasicProgress( 0, 1 );
 			},
 			onCompletion: ( task )=>
 			{
@@ -527,6 +532,7 @@ class sdTask extends sdEntity
 		};
 		
 		sdTask.tasks = [];
+		sdTask.sort_tasks = false;
 	}
 	
 	static WakeUpTasksFor( character )
@@ -540,12 +546,19 @@ class sdTask extends sdEntity
 	}
 	static PerformActionOnTasksOf( character, callback )
 	{
+		let tasks = [];
 		for ( let i = 0; i < sdTask.tasks.length; i++ )
 		{
-			if ( sdTask.tasks[ i ]._executer === character )
-			if ( !sdTask.tasks[ i ]._is_being_removed )
-			callback( sdTask.tasks[ i ] );
+			let task = sdTask.tasks[ i ];
+				
+			if ( task._executer === character )
+			if ( !task._is_being_removed )
+			tasks.push( task );
 		}
+		
+		for ( let i = 0; i < tasks.length; i++ )
+		if ( !tasks[ i ]._is_being_removed )
+		callback( tasks[ i ] );
 	}
 	
 	static GetTaskDifficultyScaler() // Prevent players connecting all of their accounts to give claim reward per each socket
@@ -651,7 +664,7 @@ class sdTask extends sdEntity
 	
 	SetBasicProgress( current, total )
 	{
-		this.progress = '( ' + current + ' / ' + total + ' )';
+		this.progress = '( ' + current + ' / ' + total + '; '+Math.round((this._difficulty*100*1000)/1000)+'% rewards )';
 		this._update_version++;
 	}
 	
@@ -665,7 +678,7 @@ class sdTask extends sdEntity
 		//this._is_global = params.is_global || false; // All players can execute it
 
 
-		this._difficulty = params.difficulty || 0.1; // Task difficulty, decides how much percentage the player gets closer towards task rewards when completed ( 1 = 100%, 0.1 = 10%)
+		this._difficulty = Math.ceil( ( params.difficulty || 0 ) * 1000 ) / 1000; // Task difficulty, decides how much percentage the player gets closer towards task rewards when completed ( 1 = 100%, 0.1 = 10%)
 		
 		this._allow_task_hibernation = params.allow_hibernation || true; // Comment below, set "false" only for long tasks like the mothership container
 		/*
@@ -683,6 +696,7 @@ class sdTask extends sdEntity
 		//this.extract_target = params.extract_target || 0; // For "Extract entity tasks" , like "Rescue / Arrest Star Defender" event
 		
 		this._similarity_hash = params.similarity_hash; // In some cases it can be used to prevent spawning of similar tasks. For example it can be called 'Destroy-1239123921'
+		this._tag = params.tag || ''; // Can be used to identify randomly assigned tasks, so other tasks like "Destroy X" aren't preventing regular random tasks
 		
 		this.mission = params.mission || 0;
 		
@@ -748,6 +762,7 @@ class sdTask extends sdEntity
 		//this.appearance = params.appearance;
 		
 		sdTask.tasks.push( this );
+		sdTask.sort_tasks = true;
 	}
 	get hitbox_x1() { return 0; }
 	get hitbox_x2() { return 0; }
@@ -837,14 +852,27 @@ class sdTask extends sdEntity
 				{
 					if ( mission !== sdTask.missions[ sdTask.MISSION_TRACK_ENTITY ] && mission !== sdTask.missions[ sdTask.MISSION_TASK_CLAIM_REWARD ] )
 					if ( this._difficulty > 0 ) // Task failed had difficulty? ( Prevents "task failed" on semi-objectives like Shurg Converter if it's not the last one )
-					sdTask.MakeSureCharacterHasTask({ 
-						similarity_hash:'FAILED-' + this._similarity_hash, 
-						executer: this._executer,
-						mission: sdTask.MISSION_GAMEPLAY_HINT,
-						title: 'Task failed',
-						description: 'You\'ve failed to complete "' + this.title + '"',
-						time_left: 30 * 5
-					});
+					{
+						let executer = this._executer;
+						let title = this.title;
+						let similarity_hash = this._similarity_hash;
+						
+						if ( executer )
+						setTimeout( ()=>
+						{
+							sdTask.MakeSureCharacterHasTask({ 
+								similarity_hash:'FAILED-' + similarity_hash, 
+								executer: executer,
+								mission: sdTask.MISSION_GAMEPLAY_HINT,
+								title: 'Task failed',
+								description: 'You\'ve failed to complete "' + title + '"',
+								time_left: 30 * 5
+							});
+
+							if ( executer._socket )
+							sdSound.PlaySound({ name:'mission_failed', x:executer.x, y:executer.y, volume:1, pitch:1 }, [ executer._socket ] );
+						}, 1000 );
+					}
 					
 					this.remove();
 					return;
@@ -858,13 +886,29 @@ class sdTask extends sdEntity
 				
 					if ( mission !== sdTask.missions[ sdTask.MISSION_TRACK_ENTITY ] && mission !== sdTask.missions[ sdTask.MISSION_TASK_CLAIM_REWARD ] )
 					if ( this._difficulty > 0 ) // Task completed had difficulty? ( Prevents "task complete" on semi-objectives like Shurg Converter if it's not the last one )
-					sdTask.MakeSureCharacterHasTask({ 
-						similarity_hash:'COMPLETED-' + this._similarity_hash, 
-						executer: this._executer,
-						mission: sdTask.MISSION_GAMEPLAY_NOTIFICATION,
-						title: 'You\'ve completed "' + this.title + '"',
-						description: ( ( this._difficulty / sdTask.reward_claim_task_amount ) * 100 ) +'% progress towards task rewards'
-					});
+					{
+						let executer = this._executer;
+						let title = this.title;
+						let similarity_hash = this._similarity_hash;
+						let difficulty = this._difficulty;
+						
+						if ( executer )
+						setTimeout( ()=>
+						{
+							sdTask.MakeSureCharacterHasTask({ 
+								similarity_hash:'COMPLETED-' + similarity_hash, 
+								executer: executer,
+								mission: sdTask.MISSION_GAMEPLAY_NOTIFICATION,
+								title: 'You\'ve completed "' + title + '"',
+								description: Math.floor( ( difficulty ) * 100 ) +'% progress towards task rewards'
+							});
+
+							if ( executer._socket )
+							{
+								sdSound.PlaySound({ name:'mission_complete', x:executer.x, y:executer.y, volume:1, pitch:1 }, [ executer._socket ] );
+							}
+						}, 1000 );
+					}
 
 					this.remove();
 					return;
@@ -919,6 +963,16 @@ class sdTask extends sdEntity
 		{
 			if ( this._allow_task_hibernation )
 			this.SetHiberState( sdEntity.HIBERSTATE_HIBERNATED_NO_COLLISION_WAKEUP );
+		}
+	}
+	
+	static GlobalThink( GSPEED )
+	{
+		if ( sdTask.sort_tasks )
+		{
+			sdTask.sort_tasks = false;
+			
+			sdTask.tasks.sort( (a,b)=>b._difficulty-a._difficulty );
 		}
 	}
 	

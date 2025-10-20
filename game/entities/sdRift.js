@@ -193,7 +193,7 @@ class sdRift extends sdEntity
 						executer: sdWorld.sockets[ i ].character,
 						target: this,
 						mission: sdTask.MISSION_DESTROY_ENTITY,
-						difficulty: 0.1 * sdTask.GetTaskDifficultyScaler(),		
+						difficulty: 1 * sdTask.GetTaskDifficultyScaler(),		
 						title: 'Close the dimensional tear',
 						description: potential_description
 					});
@@ -246,9 +246,10 @@ class sdRift extends sdEntity
 							{
 								e.stability = Math.max( -1, e.stability - strength );
 
+								/* EG: I don't think players like this
 								if ( e.gun_slot !== 9 )
 								if ( sdWorld.Dist2D_Vector( e.sx, e.sy ) > 10 )
-								e.DropWeapon( e.gun_slot );
+								e.DropWeapon( e.gun_slot );*/
 							}
 
 							if ( e.IsPlayerClass() )
@@ -457,7 +458,10 @@ class sdRift extends sdEntity
 												sdWorld.SendEffect({ x:character_entity.x, y:character_entity.y, type:sdEffect.TYPE_TELEPORT, hue:170/*, filter:'hue-rotate(' + ~~( 170 ) + 'deg)'*/ });
 												character_entity.remove();
 											}
-							
+
+
+											if ( character_entity._is_being_removed )
+											clearInterval( logic, 1000 );
 										};
 										setInterval( logic, 1000 );
 	
@@ -640,7 +644,9 @@ class sdRift extends sdEntity
 						damage_scale: 0.01, // Just a decoration effect
 						type:sdEffect.TYPE_EXPLOSION, 
 						owner:this,
-						color:'#33FFFF' 
+						color:'#33FFFF',
+						no_smoke: true,
+						shrapnel: true
 					});
 					from_entity.remove();
 				
@@ -658,7 +664,9 @@ class sdRift extends sdEntity
 					damage_scale: 0.01, // Just a decoration effect
 					type:sdEffect.TYPE_EXPLOSION, 
 					owner:this,
-					color:'#33FFFF' 
+					color:'#33FFFF' ,
+					no_smoke: true,
+					shrapnel: true
 				});
 				//Relocate the anomaly
 				this.teleport_alpha = 0;
@@ -765,7 +773,9 @@ class sdRift extends sdEntity
 			damage_scale: 0.01, // Just a decoration effect
 			type:sdEffect.TYPE_EXPLOSION, 
 			owner:this,
-			color:'#FFFFFF' 
+			color:'#FFFFFF',
+			no_smoke: true,
+			shrapnel: true
 		});
 	}
 	onRemoveAsFakeEntity()

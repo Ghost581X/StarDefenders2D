@@ -1,8 +1,10 @@
 /*
 
-	Cable connection node, does nothing, stores some amount of matter just so it can transfer it
+	Caption with text
 
 */
+/* global sdModeration */
+
 import sdWorld from '../sdWorld.js';
 import sdEntity from './sdEntity.js';
 import sdBlock from './sdBlock.js';
@@ -31,7 +33,7 @@ class sdCaption extends sdEntity
 	get hitbox_y2() { return 4; }
 	
 	get hard_collision()
-	{ return true; }
+	{ return false; }
 	
 	get is_static() // Static world objects like walls, creation and destruction events are handled manually. Do this._update_version++ to update these
 	{ return true; }

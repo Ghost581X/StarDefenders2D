@@ -23,6 +23,10 @@ import sdBloodDecal from './sdBloodDecal.js';
 import sdBaseShieldingUnit from './sdBaseShieldingUnit.js';
 import sdBubbleShield from './sdBubbleShield.js';
 import sdBadDog from './sdBadDog.js';
+import sdDrone from './sdDrone.js';
+import sdFactions from './sdFactions.js';
+import sdCom from './sdCom.js';
+
 
 class sdBullet extends sdEntity
 {
@@ -54,7 +58,17 @@ class sdBullet extends sdEntity
 
 		sdBullet.images_with_smoke =
 		{
-			'rocket_proj': 1
+			'rocket_proj': 1,
+			'mini_missile_p241': 1,
+			'f_hover_rocket': 1
+		};
+		sdBullet.images_with_no_velocity_rotation = 
+		{
+			'flare': 1,
+			'anti_rifle_projectile_overcharged': 1,
+			'anti_rifle_projectile': 1,
+			'drain_shotgun_projectile_overcharged': 1,
+			'drain_shotgun_projectile': 1
 		};
 
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
@@ -92,6 +106,7 @@ class sdBullet extends sdEntity
 	return 2
 	else
 	return 0.1 }
+
 	/*
 	get substeps() // Bullets will need more
 	{ return 6; } // 3 was generally fine expect for sniper
@@ -100,9 +115,9 @@ class sdBullet extends sdEntity
 	{ return 1; } // 3 was generally fine expect for sniper
 	*/
 	get hard_collision() // For world geometry where players can walk
-	{ return this.is_grenade; }
+	{ return this.sticky_target ? false : this.is_grenade; }
 
-	get mass() { return 5; }
+	get mass() { return this.model === 'stalker_target' ? 15 : 5; }
 	Impulse( x, y )
 	{
 		this.sx += x / this.mass;
@@ -110,11 +125,11 @@ class sdBullet extends sdEntity
 	}
 
 	ThinkUntilRemoved()
-	{ return this._rail || this._hook || this._wave; }
+	{ return this._rail || this._wave; }
 
 	IsVisible( observer_character ) // Can be used to hide guns that are held, they will not be synced this way
 	{
-		if ( this._rail || this._hook || this._wave )
+		if ( this._rail || this._wave )
 		return false;
 
 		if ( this.color === 'transparent' )
@@ -128,7 +143,7 @@ class sdBullet extends sdEntity
 		if ( this.is_grenade )
 		if ( vel > 3 )
 		{
-			if ( !sdWorld.is_server )
+			if ( !sdWorld.is_server || sdWorld.is_singleplayer )
 			sdSound.PlaySound({ name:'world_hit2', x:this.x, y:this.y, pitch:5, volume: Math.min( 0.25, 0.1 * vel ), _server_allowed:true });
 		}
 
@@ -154,13 +169,84 @@ class sdBullet extends sdEntity
 
 	RemoveBullet()
 	{
-		if ( sdWorld.is_server )
+		if ( sdWorld.is_server /*|| this._speculative*/ )
 		this.remove();
 		else
 		{
 			this.sx = 0;
 			this.sy = 0;
 			//this._client_side_hide_until = sdWorld.time + 100;
+		}
+	}
+	SpawnFlareSquad()
+	{
+		// Spawn a faction near the flare, depending on "damage" value to determine which faction.
+		if ( !sdWorld.is_server ) // Let's make sure it's the server doing it.
+		return;
+		
+		if ( this._damage === 7 ) // AI team 7 is for Setr faction, so a Setr faction Spawn
+		{
+			// Attempt spawning 2 drones and 2 humanoids
+			for ( let i = 0; i < 4; i++ )
+			{
+				let ent;
+				if ( i < 2 ) // Humanoid
+				{
+					ent = sdEntity.Create( sdCharacter, { x:this.x, y:this.y, _ai_enabled:sdCharacter.AI_MODEL_FALKOK } );
+					sdFactions.SetHumanoidProperties( ent, sdFactions.FACTION_SETR );
+				}
+				else // Drone
+				{
+					ent = sdEntity.Create( sdDrone, { x:this.x, y:this.y, type: sdDrone.DRONE_SETR } );
+					ent._look_x = this.x;
+					ent._look_y = this.y;
+				}
+				
+				let x,y;
+				let tr = 100;
+				do
+				{
+					{
+						x = this.x + 128 - ( Math.random() * 256 );
+
+						if ( x < sdWorld.world_bounds.x1 + 32 ) // Prevent out of bound spawns
+						x = sdWorld.world_bounds.x1 + 64 + ( Math.random() * 192 );
+
+						if ( x > sdWorld.world_bounds.x2 - 32 ) // Prevent out of bound spawns
+						x = sdWorld.world_bounds.x2 - 64 - ( Math.random() * 192 );
+					}
+
+					y = this.y + 128 - ( Math.random() * ( 256 ) );
+					if ( y < sdWorld.world_bounds.y1 + 32 )
+					y = sdWorld.world_bounds.y1 + 32 + 192 - ( Math.random() * ( 192 ) ); // Prevent out of bound spawns
+
+					if ( y > sdWorld.world_bounds.y2 - 32 )
+					y = sdWorld.world_bounds.y1 - 32 - 192 + ( Math.random() * ( 192 ) ); // Prevent out of bound spawns
+
+					if ( ent.CanMoveWithoutOverlap( x, y, 0 ) )
+					if ( sdWorld.CheckLineOfSight( x, y, this.x, this.y, ent, sdCom.com_visibility_ignored_classes, null ) )
+					//if ( !mech_entity.CanMoveWithoutOverlap( x, y + 32, 0 ) )
+					//if ( sdWorld.last_hit_entity === null || ( sdWorld.last_hit_entity.GetClass() === 'sdBlock' && sdWorld.last_hit_entity.material === sdBlock.MATERIAL_GROUND ) )
+					{
+						ent.x = x;
+						ent.y = y;
+							
+					
+						sdSound.PlaySound({ name:'teleport', x:ent.x, y:ent.y, volume:0.5 });
+						sdWorld.SendEffect({ x:ent.x, y:ent.y, type:sdEffect.TYPE_TELEPORT });
+						//console.log('ent spawned!');
+						break;
+					}
+
+					tr--;
+					if ( tr < 0 )
+					{
+						ent.remove();
+						ent._broken = false;
+						break;
+					}
+				} while( true );
+			}
 		}
 	}
 	constructor( params )
@@ -177,6 +263,10 @@ class sdBullet extends sdEntity
 		this._hittable_by_bullets = true;
 
 		this._anti_shield_damage_bonus = 0;
+		
+		this._creation_time = sdWorld.time; // Make grenades not collide with each other when fired at the same time
+		
+		//this._speculative = false; // Only exists on client-side for a short period of time
 
 		//globalThis.EnforceChangeLog( this, 'color' );
 
@@ -187,7 +277,7 @@ class sdBullet extends sdEntity
 		this._damage = 10;
 		this.time_left = 30;
 		
-		this._client_side_hide_until = 0;
+		//this._client_side_hide_until = 0;
 
 		this._return_damage_to_owner = false; // Stimpack and medikit
 		this._custom_target_reaction = null;
@@ -203,11 +293,16 @@ class sdBullet extends sdEntity
 		this._rail = false;
 		this._rail_circled = false;
 		this._rail_alt = false;
+		this._rail_zap = false;
 
 		this._affected_by_gravity = false; // Bullet drop?
 		this.gravity_scale = 1;
 
 		this.explosion_radius = 0;
+		this._explosion_mult = params.explosion_mult || 1; // For damage upgraded guns to scale explosion damage ( not radius )
+		this._no_explosion_smoke = false;
+		this._explosion_shrapnel = false;
+		
 		this.model = null; // Custom image model
 		this.model_size = params.model_size || 0; // 0 = 32x32, 1 = 64x32, 2 = 64x64, 3 = 96x96
 
@@ -229,6 +324,8 @@ class sdBullet extends sdEntity
 
 		this._emp = false; // EMP effect, used for turrets to set them to "sleep mode"
 		this._emp_mult = 1; // How long will the turret sleep ( 1 = 5 seconds )
+		
+		//this._skip_crystals = false;
 
 		this._temperature_addition = 0; // Set enemies on fire?
 
@@ -260,6 +357,14 @@ class sdBullet extends sdEntity
 		this._homing_mult = 0; // How fast/strong does it home towards target?
 
 		this._first_frame = true; // Bad approach but early removal isn't good either. Also impossible to know if projectile is hook this early so far
+		
+		this._extra_filtering_method = null;
+		
+		this._for_ai_target = null; // Target "drone"
+		
+		this.sticky_target = null;
+		this.sticky_relative_x = 0;
+		this.sticky_relative_y = 0;
 
 		// Defining this in method that is not called on this object and passed as collision filtering thing
 		//this.BouncyCollisionFiltering = this.BouncyCollisionFiltering.bind( this ); Bad, snapshot will enumerate it
@@ -276,6 +381,26 @@ class sdBullet extends sdEntity
 		this.SetMethod( 'BouncyCollisionFiltering', this.BouncyCollisionFiltering ); // Here it used for "this" binding so method can be passed to collision logic
 		this.SetMethod( 'RegularCollisionFiltering', this.RegularCollisionFiltering ); // Here it used for "this" binding so method can be passed to collision logic
 	}
+	onSnapshotApplied()
+	{
+		if ( !sdWorld.is_server )
+		{
+			// Assume ownership so bullet does not dissappear on first sync while it is in player
+			if ( !this._owner )
+			{
+				if ( !this.CanMoveWithoutOverlap( this.x, this.y ) )
+				{
+					let e = sdWorld.last_hit_entity;
+					if ( e )
+					if ( e.IsPlayerClass() )
+					{
+						this._owner = e;
+						this._can_hit_owner = false;
+					}
+				}
+			}
+		}
+	}
 	onRemove()
 	{
 		if ( this._custom_detonation_logic )
@@ -283,6 +408,12 @@ class sdBullet extends sdEntity
 
 		if ( this.color !== 'transparent' )
 		{
+			if ( this._rail_zap )
+			{
+				sdCrystal.ZapLine( this._start_x, this._start_y, this.x, this.y, this.color );
+				sdWorld.SendEffect({ x:this.x, y:this.y, type:sdEffect.TYPE_GLOW_HIT, color:this.color, scale:2, radius:5 });
+			}
+			else
 			if ( this._rail_alt )
 			sdWorld.SendEffect({ x:this._start_x, y:this._start_y, x2:this.x, y2:this.y, type:sdEffect.TYPE_ALT_RAIL, color:this.color });
 			else
@@ -299,11 +430,26 @@ class sdBullet extends sdEntity
 			y:this.y,
 			radius:this.explosion_radius,
 			//damage_scale: ( this._owner && this._owner.IsPlayerClass() ? this._owner._damage_mult : 1 ),
-			damage_scale: 2,
+			damage_scale: 2 * this._explosion_mult,
 			type:sdEffect.TYPE_EXPLOSION,
 			armor_penetration_level: this._armor_penetration_level,
 			owner:this._owner,
-			color:this.color
+			color:this.color,
+			no_smoke:this._no_explosion_smoke,
+			shrapnel: this._explosion_shrapnel
+		});
+		
+		if ( this.model === 'flare' )
+		sdWorld.SendEffect({
+			x:this.x,
+			y:this.y,
+			radius:4,
+			//damage_scale: ( this._owner && this._owner.IsPlayerClass() ? this._owner._damage_mult : 1 ),
+			damage_scale: 0,
+			type:sdEffect.TYPE_EXPLOSION,
+			owner:this._owner,
+			color:this.color,
+			no_smoke:this._no_explosion_smoke
 		});
 
 		if ( this._hook )
@@ -375,6 +521,10 @@ class sdBullet extends sdEntity
 	Damage( dmg, initiator=null )
 	{
 		if ( !sdWorld.is_server )
+		//if ( !this._speculative )
+		return;
+	
+		if ( this.model === 'flare' )
 		return;
 
 		dmg = Math.abs( dmg );
@@ -409,7 +559,16 @@ class sdBullet extends sdEntity
 				return false;
 			}
 		}
-
+		
+		if ( !sdWorld.is_server )
+		{
+			// Speculatively ignore collisions between groups of grenades fired at the same time
+			if ( from_entity.is( sdBullet ) )
+			if ( this._creation_time === from_entity._creation_time )
+			{
+				return false;
+			}
+		}
 
 		if ( this._can_hit_owner )
 		{
@@ -443,6 +602,12 @@ class sdBullet extends sdEntity
 			}
 		}
 
+		if ( this.sticky_target === from_entity )
+		return false;
+		
+		if ( from_entity.is( sdBlock ) && from_entity._merged )
+		return false;
+
 		if ( this._admin_picker )
 		return from_entity.IsHittableWithAdminTools();
 
@@ -457,6 +622,17 @@ class sdBullet extends sdEntity
 
 		if ( !from_entity.PrecieseHitDetection( this.x, this.y, this ) )
 		return false;
+	
+		/*if ( from_entity.is( sdBullet ) )
+		if ( from_entity._owner === this._owner )
+		if ( from_entity._creation_time === this._creation_time )
+		{
+			debugger;
+			return false;
+		}*/
+
+		if ( this._extra_filtering_method )
+		return this._extra_filtering_method( from_entity, this );
 
 		return true;
 	}
@@ -474,6 +650,9 @@ class sdBullet extends sdEntity
 
 		if ( this._owner2 === from_entity )
 		return false;
+
+		if ( this._extra_filtering_method )
+		return this._extra_filtering_method( from_entity, this );
 
 		return true;
 	}
@@ -512,20 +691,28 @@ class sdBullet extends sdEntity
 
 				if ( this._homing && this._owner )
 				{
+					let invert = ( this._owner.IsPlayerClass() && this._owner._key_states.GetKey( 'Mouse3' ) ? -1 : 1 ); // Repel missiles via right-click
 					let di_targ = sdWorld.Dist2D_Vector( this._owner.look_x - this.x, this._owner.look_y - this.y );
-					let xx = 1 * ( this._owner.look_x - this.x ) - this.sx * di_targ / 15;
-					let yy = 1 * ( this._owner.look_y - this.y ) - this.sy * di_targ / 15;
+					let xx = invert * ( this._owner.look_x - this.x ) - this.sx * di_targ / 15;
+					let yy = invert * ( this._owner.look_y - this.y ) - this.sy * di_targ / 15;
 
 					let di = sdWorld.Dist2D_Vector( xx, yy );
 					if ( di > 0.01 )
 					{
 						this.acx = sdWorld.MorphWithTimeScale( this.acx, xx / di * 50, 1 - this._homing_mult, GSPEED );
 						this.acy = sdWorld.MorphWithTimeScale( this.acy, yy / di * 50, 1 - this._homing_mult, GSPEED );
+						
 					}
 				}
 
 				this.sx += this.acx * GSPEED * this.ac * 1;
 				this.sy += this.acy * GSPEED * this.ac * 1;
+			}
+			
+			if ( this.model === 'flare' )
+			{
+				this.sx = this.sx * 0.95;
+				this.sy = this.sy * 0.95;
 			}
 
 
@@ -579,7 +766,7 @@ class sdBullet extends sdEntity
 						this._damage = this._damage / vel * vel2;
 
 						if ( !sdWorld.is_server )
-						if ( sdWorld.last_hit_entity === null || !this.CanBounceOff( sdWorld.last_hit_entity ) )
+						if ( sdWorld.last_hit_entity === null || ( !this.CanBounceOff( sdWorld.last_hit_entity ) && !this.WillRailPenetrate( sdWorld.last_hit_entity ) ) )
 						{
 							this.RemoveBullet();
 						
@@ -602,6 +789,7 @@ class sdBullet extends sdEntity
 			if ( this._custom_extra_think_logic )
 			if ( this._custom_extra_think_logic( this, GSPEED ) )
 			{
+				if ( this.model !== 'flare' || this.model !== 'stalker_target' )
 				this.RemoveBullet();
 			
 				return;
@@ -610,6 +798,9 @@ class sdBullet extends sdEntity
 			this.time_left -= GSPEED;
 			if ( this.time_left <= 0 )
 			{
+				if ( this.model === 'flare' ) // If it's a "flare", this is where it calls the "Spawn squad" Function
+				this.SpawnFlareSquad();
+				
 				if ( this._hook )
 				{
 					this._last_target = null;
@@ -629,15 +820,50 @@ class sdBullet extends sdEntity
 		{
 			if ( sdBullet.images_with_smoke[ this.model ] )
 			{
-				this._smoke_spawn_wish += GSPEED;
-				if ( this._smoke_spawn_wish > 1 )
+				if ( this._smoke_spawn_wish > 0 )
+				this._smoke_spawn_wish -= GSPEED;
+			
+				if ( this._smoke_spawn_wish <= 0 )
 				{
-					this._smoke_spawn_wish = this._smoke_spawn_wish % 1;
-					//this._smoke_spawn_wish -= 1;
-
-					let ent = new sdEffect({ x: this.x, y: this.y, sy:-1, type:sdEffect.TYPE_GLOW_HIT, color:'#666666' });
+					let colors = [ '#777777', '#666666', '#555555' ]
+					let ent = new sdEffect({ x: this.x, y: this.y, sy:-1, type:sdEffect.TYPE_SMOKE, color:sdEffect.GetSmokeColor( colors )});
 					sdEntity.entities.push( ent );
+					
+					this._smoke_spawn_wish = 0.5;
 				}
+			}
+		}
+		
+		if ( sdWorld.is_server )
+		if ( this.model === 'stalker_target' )
+		{
+			if ( !this._for_ai_target || this._for_ai_target._is_being_removed )
+			this.RemoveBullet();
+		
+			if ( this._for_ai_target )
+			if ( this._for_ai_target.is( sdCharacter ) && this._for_ai_target._ai_enabled )
+			if ( !this._for_ai_target._ai_force_fire )
+			{
+				if ( this._for_ai_target._ai )
+				this._for_ai_target._ai.target = this;
+			}
+		}	
+		
+		if ( this.sticky_target )
+		{
+			if ( this.sticky_target._is_being_removed || !sdWorld.inDist2D_Boolean( this.x, this.y, this.sticky_target.x + this.sticky_relative_x, this.sticky_target.y + this.sticky_relative_y, 100 ) )
+			{
+				this.sticky_target = null;
+				
+				if ( this.time_left > 0 )
+				this.time_left = 0;
+			}
+			else
+			{
+				this.x = this.sticky_target.x + this.sticky_relative_x;
+				this.y = this.sticky_target.y + this.sticky_relative_y;
+				this.sx = (this.sticky_target.sx||0);
+				this.sy = (this.sticky_target.sy||0);
 			}
 		}
 	}
@@ -647,8 +873,8 @@ class sdBullet extends sdEntity
 		if ( this._bouncy )
 		return true;
 	
-		if ( this.model === 'bullet2' )
-		return false;
+		if ( this.model === 'flare' || this.model === 'stalker_target' )
+		return true;
 
 		if ( this.explosion_radius > 0 )
 		return false;
@@ -665,6 +891,22 @@ class sdBullet extends sdEntity
 		}
 
 		return false;
+	}
+	
+	WillRailPenetrate( from_entity )
+	{
+		if ( !this.penetrating || !this._rail )
+		return false;
+	
+		if ( this._damage > 5 ) // Larger damage threshold since it can penetrate way better 
+		{
+			if ( from_entity.is( sdBlock ) || from_entity.is( sdDoor ) )
+			return ( from_entity._shielded === null ); // Disallow shielded units to be penetrated
+			
+			return true;
+		}
+		
+		return false;	
 	}
 
 	GetCollisionMode()
@@ -701,7 +943,55 @@ class sdBullet extends sdEntity
 		/*if ( this._hook )
 		if ( from_entity._class === 'sdCharacter' || from_entity._class === 'sdGun' )
 		debugger;*/
-
+		if ( this.model === 'flare' || this.model === 'stalker_target' ) // Flares should not deal damage
+		return;
+	
+		if ( from_entity.is( sdBlock ) && from_entity._merged )
+		{
+			// Essentially the blocks split themselves, returning an array of the new spawned blocks
+			let ents = from_entity.UnmergeBlocks();
+			if ( ents.length > 0 ) 
+			{
+				// And we need to determine which block to damage, which is the closest one.
+				let closest = sdWorld.Dist2D( this.x, this.y, ents[ 0 ].x + ( ents[ 0 ].width / 2 ), ents[ 0 ].y + ( ents[ 0 ].height / 2 ) );
+				from_entity = ents[ 0 ];
+				for ( let i = 0; i < ents.length; i++ )
+				{
+					let distance = sdWorld.Dist2D( this.x, this.y, ents[ i ].x + ( ents[ i ].width / 2 ), ents[ i ].y + ( ents[ i ].height / 2 ) );
+					if ( distance < closest )
+					{
+						closest = distance;
+						from_entity = ents[ i ];
+					}
+				}
+			}
+			else
+			return;
+		}
+		// BG shooting works normally even without this, so disabled for now.
+		/*if ( this._bg_shooter && !this._bouncy && from_entity._is_bg_entity === 1 )
+		{
+			// Essentially the backgrounds split themselves, returning an array of the new spawned backgrounds
+			let ents = from_entity.UnmergeBackgrounds();
+			if ( ents.length > 0 ) 
+			{
+				// And we need to determine which block to damage, which is the closest one.
+				let closest = sdWorld.Dist2D( this.x, this.y, ents[ 0 ].x + ( ents[ 0 ].width / 2 ), ents[ 0 ].y + ( ents[ 0 ].height / 2 ) );
+				from_entity = ents[ 0 ];
+				for ( let i = 0; i < ents.length; i++ )
+				{
+					let distance = sdWorld.Dist2D( this.x, this.y, ents[ i ].x + ( ents[ i ].width / 2 ), ents[ i ].y + ( ents[ i ].height / 2 ) );
+					if ( distance < closest )
+					{
+						closest = distance;
+						from_entity = ents[ i ];
+					}
+				}
+			}
+			else
+			return;
+		}*/
+		
 		if ( this._last_target === from_entity )
 		return; // Prevent bouncing bullets to deal multiple damage when they stuck in something?
 
@@ -714,11 +1004,16 @@ class sdBullet extends sdEntity
 			return;
 		}
 
+
+		// Moved it up because this logic prevents shotgun projectiles from reacting to each other
+		if ( !this.RegularCollisionFiltering( from_entity ) )
+		return;
+	
 		if ( this._custom_post_bounce_reaction )
 		this._custom_post_bounce_reaction( this, 0, from_entity );
 
-		if ( !this.RegularCollisionFiltering( from_entity ) )
-		return;
+		//if ( !this.RegularCollisionFiltering( from_entity ) )
+		//return;
 	
 
 		if ( this._custom_target_reaction_before_damage_tests )
@@ -814,6 +1109,21 @@ class sdBullet extends sdEntity
 								}
 
 							}
+							
+							if ( from_entity.is( sdCharacter ) )
+							{
+								if ( from_entity._god && from_entity._socket )
+								{
+								}
+								else
+								sdWorld.SendEffect({ 
+									t: from_entity._net_id,
+									x: Math.round( this.x - from_entity.x ), 
+									y: Math.round( this.y - from_entity.y ), 
+									sx: Math.round( this.sx * Math.abs( this._damage ) * this._knock_scale ), 
+									sy: Math.round( this.sy * Math.abs( this._damage ) * this._knock_scale ) 
+								}, 'P' );
+							}
 
 							if ( this._bouncy )
 							this._damage *= 0.8;
@@ -831,6 +1141,7 @@ class sdBullet extends sdEntity
 					if ( this._detonate_on_impact )
 					if ( this._damage === 0 || !sdWorld.is_server )
 					{
+						if ( this.model !== 'flare' || this.model !== 'stalker_target' )
 						this.RemoveBullet();
 					
 						return;
@@ -841,7 +1152,7 @@ class sdBullet extends sdEntity
 			{
 				if ( sdWorld.server_config.GetHitAllowed && !sdWorld.server_config.GetHitAllowed( this, from_entity ) )
 				this._damage = 0;
-				if ( this.is_grenade )
+				if ( this.is_grenade || this.model === 'flare' || this.model === 'stalker_target' )
 				{
 					// Maybe more filtering logic had to be here
 					if ( this._custom_target_reaction_protected )
@@ -862,7 +1173,7 @@ class sdBullet extends sdEntity
 					//let dmg_mult = 1;
 
 
-					if ( this.CanBounceOff( from_entity ) )
+					if ( this.CanBounceOff( from_entity ) || ( this._rail && this.WillRailPenetrate( from_entity ) ) ) // Allow some rails to penetrate
 					{
 						if ( this.penetrating )
 						{
@@ -907,12 +1218,8 @@ class sdBullet extends sdEntity
 								let limb_mult = from_entity.GetHitDamageMultiplier( this.x, this.y );
 
 								let critical_hit_mult = this.GetCriticalHitMult();
-
-								if ( !this._wave )
-								{
-									if ( !this._soft )
-									sdWorld.SendEffect({ x:this.x, y:this.y, type:( limb_mult === 1 ? from_entity.GetBleedEffect() : from_entity.GetBleedEffectDamageMultiplier() ) });
-								}
+								
+								let eff = ( limb_mult === 1 ? from_entity.GetBleedEffect() : from_entity.GetBleedEffectDamageMultiplier() );
 
 								let dmg = this._damage * critical_hit_mult;// * dmg_mult;
 
@@ -958,7 +1265,7 @@ class sdBullet extends sdEntity
 								//if ( from_entity.GetClass() === 'sdLifeBox' )
 								if ( this._detonate_on_impact )
 								if ( from_entity.is( sdLifeBox ) )
-								if ( this._bouncy && !this.is_grenade )
+								if ( this._bouncy && !this.is_grenade && this.model !== 'flare' && this.model !== 'stalker_target' )
 								{
 									this.RemoveBullet(); // Prevent falkonian PSI cutter oneshotting lifebox
 								}
@@ -990,6 +1297,65 @@ class sdBullet extends sdEntity
 									if ( from_entity.is( sdCrystal ) )
 									if ( typeof this._owner._nature_damage !== 'undefined' )
 									this._owner._nature_damage += dmg;
+								}
+								
+								
+
+								if ( !this._wave )
+								{
+									if ( !this._soft )
+									{
+										let partial_damage = false;
+										
+										if ( dmg > 0 )
+										if ( old_hea - ( from_entity.hea || from_entity._hea || 0 ) < dmg * 0.99 )
+										partial_damage = true;
+										
+										if ( eff === sdEffect.TYPE_SHIELD || partial_damage )
+										{
+											let dist_x1 = Math.abs( from_entity.x + from_entity._hitbox_x1 - this.x );
+											let dist_x2 = Math.abs( from_entity.x + from_entity._hitbox_x2 - this.x );
+											let dist_y1 = Math.abs( from_entity.y + from_entity._hitbox_y1 - this.y );
+											let dist_y2 = Math.abs( from_entity.y + from_entity._hitbox_y2 - this.y );
+											
+											let xx = this.x;
+											let yy = this.y;
+											let r = 0;
+											
+											if ( Math.min( dist_x1, dist_x2 ) < Math.min( dist_y1, dist_y2 ) )
+											{
+												if ( dist_x1 < dist_x2 )
+												{
+													xx = from_entity.x + from_entity._hitbox_x1;
+													r = - Math.PI / 2;
+												}
+												else
+												{
+													xx = from_entity.x + from_entity._hitbox_x2;
+													r = Math.PI / 2;
+												}
+											}
+											else
+											{
+												if ( dist_y1 < dist_y2 )
+												yy = from_entity.y + from_entity._hitbox_y1;
+												else
+												yy = from_entity.y + from_entity._hitbox_y2;
+											}
+											
+											sdWorld.SendEffect({ 
+												x:xx, 
+												y:yy, 
+												type:sdEffect.TYPE_SHIELD,
+												rotation: r });
+										}
+										
+										if ( eff !== sdEffect.TYPE_SHIELD )
+										sdWorld.SendEffect({ 
+											x:this.x, 
+											y:this.y, 
+											type:eff });
+									}
 								}
 							}
 							else
@@ -1054,8 +1420,8 @@ class sdBullet extends sdEntity
 						if ( this.penetrating )
 						{
 							this._damage *= 0.5;
-							this.sx *= 0.5;
-							this.sy *= 0.5;
+							this.sx *= this._rail ? 0.95 : 0.5;
+							this.sy *= this._rail ? 0.95 : 0.5;
 
 							//console.log( 'vel = '+sdWorld.Dist2D_Vector( this.sx, this.sy ) );
 
@@ -1093,7 +1459,6 @@ class sdBullet extends sdEntity
 					if ( this._damage === 0 )
 					{
 						//this._last_target = from_entity;
-
 						this.RemoveBullet();
 					}
 					return;
@@ -1101,14 +1466,20 @@ class sdBullet extends sdEntity
 			}
 		}
 	}
+	get title()
+	{
+		return 'Projectile';
+	}
 	Draw( ctx, attached )
 	{
 		ctx.apply_shading = false;
 		
-		if ( this.sy !== 0 || this.sx !== 0 || this.is_grenade )
+		if ( this.sy !== 0 || this.sx !== 0 || this.is_grenade || this.sticky_target || this.model === 'flare' )
 		{
 			if ( this.model )
 			{
+				//if ( this.model !== 'flare' )
+				if ( sdBullet.images_with_no_velocity_rotation[ this.model ] !== 1 )
 				ctx.rotate( Math.atan2( this.sy, this.sx ) );
 
 				if ( !sdBullet.images[ this.model ] )
@@ -1123,7 +1494,7 @@ class sdBullet extends sdEntity
 				if ( this.model_size === 3 )
 				ctx.drawImageFilterCache( sdBullet.images[ this.model ], - 48, - 48, 96,96 ); // used for 96 by 96 sprites
 
-				if ( this.model === 'bullet2' )
+				if ( this.model === 'flare' )
 				{
 					if ( this._sd_tint_filter === null )
 					{
@@ -1146,14 +1517,14 @@ class sdBullet extends sdEntity
 					ctx.blend_mode = THREE.AdditiveBlending;
 					{
 						ctx.sd_tint_filter = this._sd_tint_filter;
-						let dist_travelled = sdWorld.Dist2D( this._start_x, this._start_y, this.x, this.y );
-						ctx.scale( 1 * dist_travelled / 32, 0.5 );
-						ctx.drawImageFilterCache( sdBullet.images[ this.model ], -32, - 16, 32, 32 );
+						//let dist_travelled = sdWorld.Dist2D( this._start_x, this._start_y, this.x, this.y );
+						//ctx.scale( 1 * dist_travelled / 32, 0.5 );
+						ctx.drawImageFilterCache( sdBullet.images[ this.model ], -16, - 16, 32, 32 );
 						ctx.sd_tint_filter = null;
 					}
 				}
 
-				if ( this.model !== 'bullet2' )
+				if ( this.model !== 'flare' )
 				ctx.drawImageFilterCache( sdBullet.images[ this.model ], - 16, - 16, 32, 32 );
 
 				ctx.sd_tint_filter = null;

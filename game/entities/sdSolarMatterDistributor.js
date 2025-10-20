@@ -84,7 +84,7 @@ class sdSolarMatterDistributor extends sdEntity
 		
 		this._spawned_ai = false; // Spawn SD AI
 		
-		this._event_to_spawn = sdWeather.only_instance._potential_invasion_events[ Math.floor( Math.random() * sdWeather.only_instance._potential_invasion_events.length ) ] || -1; // Random event which are usually invasions is selected.
+		this._event_to_spawn = sdWeather.only_instance ? sdWeather.only_instance._potential_invasion_events[ Math.floor( Math.random() * sdWeather.only_instance._potential_invasion_events.length ) ] || -1 : -1; // Random event which are usually invasions is selected. // UPD: sdWeather.only_instance can be missing on client-side
 		
 		this.matter_max = 4000;
 		this.matter = 100;
@@ -288,11 +288,12 @@ class sdSolarMatterDistributor extends sdEntity
 											sdWorld.SendEffect({ x:character_entity.x, y:character_entity.y, type:sdEffect.TYPE_TELEPORT });
 											character_entity.remove();
 										}
-							
+										
+										if ( character_entity._is_being_removed )
+										clearInterval( logic, 1000 );
 									};
 									
 									setInterval( logic, 1000 );
-									
 									
 									break;
 								}
@@ -334,7 +335,7 @@ class sdSolarMatterDistributor extends sdEntity
 					mission: sdTask.MISSION_PROTECT_ENTITY,				
 					title: 'Protect solar powered matter distributor',
 					description: desc,
-					difficulty: 0.0625
+					difficulty: 0.2
 				});
 			}
 			this.has_players_nearby = false;
@@ -382,7 +383,7 @@ class sdSolarMatterDistributor extends sdEntity
 				}
 			}
 			if ( this.has_players_nearby )
-			this.progress = Math.min( this.progress + 0.45, 100 );
+			this.progress = Math.min( this.progress + 1.35, 100 ); // 0.45 feels painfully slow
 		}
 	}
 	onMovementInRange( from_entity )

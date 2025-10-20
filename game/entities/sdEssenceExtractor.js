@@ -44,7 +44,7 @@ class sdEssenceExtractor extends sdEntity
 	RequireSpawnAlign()
 	{ return true; }
 	
-	getRequiredEntities() // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
 	{
 		if ( this.crystal )
 		return [ this.crystal ]; 
@@ -381,7 +381,7 @@ class sdEssenceExtractor extends sdEntity
 				this.crystal.sy = 0;
 				
 				this.crystal.held_by = null;
-				this.crystal.PhysWakeUp();
+				this.crystal.onCarryEnd();
 				this.crystal = null;
 				
 			}
@@ -495,6 +495,7 @@ class sdEssenceExtractor extends sdEntity
 				if ( can_put )
 				{
 					from_entity.held_by = this;
+					from_entity.onCarryStart();
 					this.crystal = from_entity;
 
 					this._hitbox_y1 = this.hitbox_y1;
@@ -561,7 +562,7 @@ class sdEssenceExtractor extends sdEntity
 					if ( parameters_array[ 0 ] >= 0 )
 					if ( parameters_array[ 0 ] < 3 )
 					{
-						if ( this.GetAccurateDistance( exectuter_character.x, exectuter_character.y ) < 32 )
+						if ( this.GetAccurateDistance( exectuter_character.x + ( exectuter_character.hitbox_x1 + exectuter_character.hitbox_x2 ) / 2, exectuter_character.y + ( exectuter_character.hitbox_y1 + exectuter_character.hitbox_y2 ) / 2 ) < 32 )
 						{
 							if ( command_name === 'TRANSFER_MODE' )
 							{

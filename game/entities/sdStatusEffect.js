@@ -5,6 +5,8 @@
 	These can maybe even work as held item containers + multipliers? If these will work well across long-range teleporters.
 
 */
+/* global FakeCanvasContext, sdSound, THREE */
+
 import sdWorld from '../sdWorld.js';
 import sdEntity from './sdEntity.js';
 import sdEffect from './sdEffect.js';
@@ -14,6 +16,11 @@ import sdWeather from './sdWeather.js';
 import sdCrystal from './sdCrystal.js';
 import sdLost from './sdLost.js';
 import sdCom from './sdCom.js';
+import sdCable from './sdCable.js';
+import sdBG from './sdBG.js';
+import sdBlock from './sdBlock.js';
+import sdWater from './sdWater.js';
+import sdCharacter from './sdCharacter.js';
 
 import sdRenderer from '../client/sdRenderer.js';
 
@@ -25,12 +32,16 @@ class sdStatusEffect extends sdEntity
 		
 		sdStatusEffect.img_level_up = sdWorld.CreateImageFromFile( 'level_up' );
 		sdStatusEffect.img_bubble_shield = sdWorld.CreateImageFromFile( 'bubble_shield' );
+		sdStatusEffect.img_attack_indicator_beam = sdWorld.CreateImageFromFile( 'attack_indicator_beam' );
+		sdStatusEffect.img_pulse = sdWorld.CreateImageFromFile( 'em_anomaly' );
+		sdStatusEffect.img_light = sdWorld.CreateImageFromFile( 'lens_flare' );
+		sdStatusEffect.img_warning = sdWorld.CreateImageFromFile( 'warning' );
 		
 		sdStatusEffect.types = [];
 		
 		sdStatusEffect.types[ sdStatusEffect.TYPE_DAMAGED = 0 ] = 
 		{
-			remove_if_for_removed: false,
+			remove_if_for_removed: false, // Damage numbers can stay for a little while, they are removed eventually
 	
 			is_emote: false,
 			
@@ -45,6 +56,7 @@ class sdStatusEffect extends sdEntity
 				status_entity._last_merges = 0;
 				
 				status_entity.dmg = params.dmg || 0;
+				status_entity.crit = params.crit || false;
 				
 				status_entity._observers = new WeakSet(); // Damage initiators
 				
@@ -55,6 +67,9 @@ class sdStatusEffect extends sdEntity
 			},
 			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
 			{
+				if ( status_entity.crit !== params.crit )
+				return false;
+
 				status_entity.dmg += params.dmg || 0;
 
 				status_entity.merges++;
@@ -97,21 +112,20 @@ class sdStatusEffect extends sdEntity
 				if ( !status_entity.for )
 				return;
 				
-				if ( status_entity._progress < 200 / 1000 * 30 )
+				if ( status_entity._progress < 200 / 1000 * 15 )
 				{
 					if ( status_entity.dmg > 0 )
 					{
-						if ( status_entity.for.DrawIn3D() === FakeCanvasContext.DRAW_IN_3D_BOX )
 						{
+							if ( status_entity._progress < 200 / 1000 * 7.5 )
+							ctx.sd_status_effect_tint_filter = [ 1.75, 1.75, 1.75 ];
+							else
 							ctx.sd_status_effect_tint_filter = [ 1.5, 1.5, 1.5 ];
 						}
-						else
-						ctx.sd_status_effect_filter = { s:'ffffff' };
 					}
 					else
 					{
-						//ctx.sd_status_effect_filter = { s:'66ff66' };
-						ctx.sd_status_effect_tint_filter = [ 0.75, 1.5, 0.75 ];
+						ctx.sd_status_effect_tint_filter = [ 0.75, 1.5, 0.75 ]; // Heal
 					}
 				}
 			},
@@ -126,7 +140,7 @@ class sdStatusEffect extends sdEntity
 				return;
 			
 				ctx.textAlign = 'center';
-				ctx.font = "5px Verdana";
+				ctx.font = ( status_entity.crit ? "7" : "5" ) + "px Verdana";
 				
 				/*for ( let sh = 0; sh < 1; sh++ )
 				for ( let x = -1; x <= 1; x++ )
@@ -167,7 +181,7 @@ class sdStatusEffect extends sdEntity
 					ctx.apply_shading = false;
 
 					if ( status_entity.dmg > 0 )
-					ctx.fillText( Math.floor( status_entity.dmg ) + '', xx, yy );
+					ctx.fillText( Math.floor( status_entity.dmg ) + ( status_entity.crit ? ' CRIT' : '' ), xx, yy );
 					else
 					ctx.fillText( '+' + Math.abs( Math.floor( status_entity.dmg ) ) + '', xx, yy ); 
 
@@ -271,16 +285,12 @@ class sdStatusEffect extends sdEntity
 	
 			onMade: ( status_entity, params )=>
 			{
-				/*if ( sdWorld.is_server )
-				if ( params.for )
-				if ( params.for.is( sdWorld.entity_classes.sdCharacter ) && params.for._net_id === 85738 )
-				trace( 'onMade' );*/
-				
 				status_entity.t = temperature_normal; // Temperature
 				
 				status_entity._normal_temperature_removal_timer = 30; // Resets if temperature is being added, for example due to overheating
 				
 				status_entity._next_spawn = 0;
+				status_entity._next_smoke_spawn = 0;
 				status_entity._next_damage = 10;
 				
 				status_entity._effects = [];
@@ -294,6 +304,11 @@ class sdStatusEffect extends sdEntity
 				status_entity.t += params.t / ( ( params.for.hmax || params.for._hmax || 300 ) / 300 ); // Copy [ 1 / 2 ]
 			
 				status_entity._every_synced = false;
+				
+				let water_to_wake_up = sdWater.all_swimmers.get( params.for );
+				if ( water_to_wake_up )
+				if ( !water_to_wake_up._is_being_removed )
+				water_to_wake_up.SetHiberState( sdEntity.HIBERSTATE_ACTIVE );
 			},
 			
 			onNotMergedAndAboutToBeMade: ( params )=>
@@ -362,11 +377,19 @@ class sdStatusEffect extends sdEntity
 				{
 					let area = ( status_entity.for._hitbox_x2 - status_entity.for._hitbox_x1 ) * ( status_entity.for._hitbox_y2 - status_entity.for._hitbox_y1 ) / ( 24 * 24 );
 					
-					status_entity._next_spawn -= GSPEED * area;					
+					status_entity._next_spawn -= GSPEED * area;
+					status_entity._next_smoke_spawn -= GSPEED * area;						
 					const up_velocity = ( status_entity.t >= temperature_fire ) ? 0 : 0.05;//-0.4;
 					const range = 4;
 					const y_offset = 0;
 					const range_affection = 16;
+					
+					if ( sdRenderer.effects_quality >= 2 && status_entity.t >= temperature_fire && status_entity._next_smoke_spawn <= 0 )
+					{
+						let s = new sdEffect({ type: sdEffect.TYPE_SMOKE, x:status_entity.for.x, y:status_entity.for.y, sx: -Math.random() + Math.random(), sy:-1 - Math.random() * 2, scale:1, radius:1/3, color:sdEffect.GetSmokeColor( sdEffect.smoke_colors ), spark_color: '#FF8800'});
+						status_entity._next_smoke_spawn = 1;
+						sdEntity.entities.push( s );
+					}
 
 					if ( status_entity._next_spawn <= 0 )
 					{
@@ -468,6 +491,35 @@ class sdStatusEffect extends sdEntity
 									//if ( e.IsBGEntity() === 1 )
 									//strength = 0.1;
 									
+									// Merged blocks scenario
+									if ( e.is( sdBlock ) || e.is( sdBG ) )
+									if ( e._merged )
+									{
+										let ents;
+										if ( e.is( sdBlock ) )
+										ents = e.UnmergeBlocks();
+										if ( e.is( sdBG ) )
+										ents = e.UnmergeBackgrounds();
+										// Set closest block/BG as entity to apply status effect
+										if ( ents.length > 0 )
+										{
+											let closest = ents[ 0 ];
+											let closest_di = sdWorld.Dist2D( status_entity.for.x + ( status_entity.for._hitbox_x1 + status_entity.for._hitbox_x2 ) / 2, status_entity.for.y + ( status_entity.for._hitbox_y1 + status_entity.for._hitbox_y2 ) / 2, ents[ 0 ].x + ents[ 0 ].width / 2, ents[ 0 ].y + ents[ 0 ].height / 2 );
+											for ( let j = 0; j < ents.length; j++ )
+											{
+												let di = sdWorld.Dist2D( status_entity.for.x + ( status_entity.for._hitbox_x1 + status_entity.for._hitbox_x2 ) / 2, status_entity.for.y + ( status_entity.for._hitbox_y1 + status_entity.for._hitbox_y2 ) / 2, ents[ j ].x + ents[ j ].width / 2, ents[ j ].y + ents[ j ].height / 2 );
+												if ( di < closest_di )
+												{
+													closest = ents[ j ];
+													closest_di = di;
+												}
+											}
+											e = closest;
+										}
+										else
+										strength = 0;
+									}
+									
 									if ( strength > 0 )
 									{
 										e.ApplyStatusEffect({ type: sdStatusEffect.TYPE_TEMPERATURE, target_value_rise:status_entity.t * ( 0.7 + Math.random() * 0.1 ), remain_part: 0.9, GSPEED:1 * strength });
@@ -510,6 +562,7 @@ class sdStatusEffect extends sdEntity
 						}
 				
 						status_entity.t = ( status_entity.t - temperature_normal ) * 0.95 + temperature_normal; // Go towards normal temperature. It can go towards any desired value really, depending on environment
+						status_entity._update_version++;
 					}
 				}
 				
@@ -578,7 +631,7 @@ class sdStatusEffect extends sdEntity
 				ctx.sd_status_effect_tint_filter = null;
 				
 				sdWorld.time = status_entity._saved_world_time;
-			},
+			}
 		};
 		
 		sdStatusEffect.types[ sdStatusEffect.TYPE_STEERING_WHEEL_PING = 3 ] = 
@@ -718,9 +771,22 @@ class sdStatusEffect extends sdEntity
 					status_entity.for.SetHiberState( sdEntity.HIBERSTATE_ACTIVE, false );
 				
 					status_entity._update_version++;
+					
+					
+
+					let cables_set = sdCable.cables_per_entity.get( status_entity.for );
+					if ( cables_set !== undefined )
+					for ( let cable of cables_set )
+					{
+						cable.Wakeup();
+						cable._update_version++;
+					}
 				}
 			
 				status_entity._ttl -= GSPEED;
+				
+				if ( Math.abs( status_entity.for.x - status_entity.tx ) > 8 || Math.abs( status_entity.for.y - status_entity.ty ) > 8 )
+				return true; // Moved into amplifier/combiner or teleported
 			
 				return ( status_entity._ttl <= 0 ); // return true = delete
 			},
@@ -1278,35 +1344,13 @@ class sdStatusEffect extends sdEntity
 			{
 				status_entity.t -= GSPEED;
 				
-				if ( !sdWorld.is_server || sdWorld.is_singleplayer )
-				{
-				}
-			
 				return ( status_entity.t <= 0 ); // return true = delete
-			},
-			onBeforeRemove: ( status_entity )=>
-			{
-			},
-			onBeforeEntityRender: ( status_entity, ctx, attached )=>
-			{
-				//if ( !status_entity.for )
-				//return;
-				//ctx.sd_status_effect_tint_filter = [ sdGun.time_amplification_gspeed_scale, sdGun.time_amplification_gspeed_scale, sdGun.time_amplification_gspeed_scale ];
-			},
-			onAfterEntityRender: ( status_entity, ctx, attached )=>
-			{
-				//ctx.sd_status_effect_filter = null;
-				//ctx.sd_status_effect_tint_filter = null;
-				//ctx.filter = 'none';
-			},
-			DrawFG: ( status_entity, ctx, attached )=>
-			{
 			}
 		};
 
-		sdStatusEffect.types[ sdStatusEffect.TYPE_BLUE_SHIELD_EFFECT = 11 ] = 
+		sdStatusEffect.types[ sdStatusEffect.TYPE_PULSE_EFFECT = 11 ] = 
 		{
-			// Now obsolete because sdBubbleShield exists, please do not use.
+			// Just a single "pulse" that appears on an object, colorable.
 			remove_if_for_removed: true,
 	
 			is_emote: false,
@@ -1315,8 +1359,8 @@ class sdStatusEffect extends sdEntity
 	
 			onMade: ( status_entity, params )=>
 			{
-				//status_entity.t = params.t;
-				//status_entity.shield_type = params.shield_type || 0;
+				status_entity.t = sdWorld.time; // Gets removed after 1 pulse, which is about 3 seconds.
+				status_entity.filter = params.filter || 'none';
 			},
 			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
 			{
@@ -1335,8 +1379,17 @@ class sdStatusEffect extends sdEntity
 			},
 			onThink: ( status_entity, GSPEED )=>
 			{
-				return true; // Delete
-				//return ( status_entity.for.armor <= 0 ); // return true = delete
+				if ( !sdWorld.is_server || sdWorld.is_singleplayer )
+				{
+				}
+				
+				if ( status_entity.for )
+				{
+					status_entity.x = status_entity.for.x;
+					status_entity.y = status_entity.for.y;
+				}
+			
+				return ( status_entity.t + 3000 <= sdWorld.time ); // return true = delete
 			},
 			onBeforeRemove: ( status_entity )=>
 			{
@@ -1353,19 +1406,570 @@ class sdStatusEffect extends sdEntity
 			DrawFG: ( status_entity, ctx, attached )=>
 			{
 				if ( !status_entity.for )
-				return; // Needed? Not sure.
+				return;
 			
-				let cur_img = sdWorld.time % 3200;
-				cur_img = Math.round( 15 * cur_img / 3200 );
-				let size_x = Math.max( 32, Math.ceil( 16 * ( Math.abs( status_entity.for._hitbox_x1 ) + Math.abs( status_entity.for._hitbox_x2 ) ) / 16 ) );
-				let size_y = Math.max( 32, Math.ceil( 16 * ( Math.abs( status_entity.for._hitbox_y1 ) + Math.abs( status_entity.for._hitbox_y2 ) ) / 16 ) );
-				ctx.drawImageFilterCache( sdStatusEffect.img_bubble_shield, cur_img * 32, 0, 32, 32, - size_x / 2, - size_y / 2, size_x, size_y );
+				ctx.filter = status_entity.filter;
+			
+				if ( sdWorld.time - status_entity.t <= 1500 )
+				ctx.globalAlpha = ( 0.9 * ( sdWorld.time - status_entity.t ) / 1500 );
+				else
+				ctx.globalAlpha = 1.8 - ( 0.9 * ( sdWorld.time - status_entity.t ) / 1500 );
+			
+				ctx.scale( ( 0.8 * ( sdWorld.time - status_entity.t ) / 1500 ), ( 0.8 * ( sdWorld.time - status_entity.t ) / 1500 ) );
+				ctx.drawImageFilterCache( sdStatusEffect.img_pulse, 0, 0, 32, 32, - 16, - 16, 32, 32 );
 				
-				// Maybe different shields could have different colors in future? Probably just use ctx.filter.
-				//ctx.drawImageFilterCache( sdStatusEffect.img_bubble_shield, cur_img * 32, 0, 32, 32, - 16, - 16, 32, 32 );
+				ctx.filter = 'none';
+			}
+		};
+
+		sdStatusEffect.types[ sdStatusEffect.TYPE_CUBE_BOSS_PROPERTIES = 12 ] = 
+		{
+			remove_if_for_removed: true,
+			is_emote: false,
+			
+			is_static: false,
+	
+			onMade: ( status_entity, params )=>
+			{
+				status_entity._ttl = params.ttl;
+				status_entity._next_spawn = 0;
+				status_entity._next_smoke_spawn = 0;
+			},
+			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				status_entity._ttl = params.ttl;
+				status_entity._update_version++;
+
+				return true; // Cancel merge process
+			},
+			onStatusOfDifferentTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Do not stop merge process
+			},
+			IsVisible: ( status_entity, observer_entity )=>
+			{
+				return true;
+			},
+			onThink: ( status_entity, GSPEED )=>
+			{
+				let attack_entities = sdWorld.GetAnythingNear( status_entity.x, status_entity.y, 64 );
+	
+				if ( sdWorld.is_server )
+				if ( attack_entities.length > 0 )
+				for ( let i = 0; i < attack_entities.length; i++ )
+				{
+					let e = attack_entities[ i ];
+					if ( !e._is_being_removed )
+					{
+						if ( e.GetClass() === 'sdBullet' && e._owner !== status_entity.for ) 
+						{
+							sdCrystal.Zap( status_entity, e, '#ffffff' );
+							sdSound.PlaySound({ name:'cube_attack', x:e.x, y:e.y, volume:0.5, pitch:2 });
+							sdWorld.SendEffect({ x:e.x , y:e.y , type:sdEffect.TYPE_SHIELD });
+
+							e._owner = status_entity.for;
+
+							e.sx = -e.sx;
+							e.sy = -e.sy;
+							e.time_left *= 2;
+
+							e.Damage( 20 ); // Prevent bullet from being endlessly reflected between 2 entities with this effect
+
+							sdLost.ApplyAffection( status_entity.for, 2.5, null, sdLost.FILTER_VOID );
+							//e.remove();
+						}
+					}
+				}
+				if ( !sdWorld.is_server || sdWorld.is_singleplayer )
+				{
+					status_entity._next_spawn -= GSPEED;
+					status_entity._next_smoke_spawn -= GSPEED;
+					
+					if ( sdRenderer.effects_quality >= 2 && status_entity._next_smoke_spawn <= 0 )
+					{
+						let s = new sdEffect({ type: sdEffect.TYPE_SMOKE, x:status_entity.for.x, y:status_entity.for.y, sx: -Math.random() + Math.random(), sy:-1 - Math.random() * 3, scale:1, radius:1/3, color: Math.random() > 0.5 ? '#000000' : '#200000' });
+						s._spark_color = s._color; 
+						status_entity._next_smoke_spawn = 2;
+						sdEntity.entities.push( s );
+					}
+
+					if ( status_entity._next_spawn <= 0 )
+					{
+						status_entity._next_spawn = 10;
+
+						const range = Math.max( status_entity.for._hitbox_x2 - status_entity.for._hitbox_x1, status_entity.for._hitbox_y2 - status_entity.for._hitbox_y1 ) / 2;
+						const y_offset = 0;
+
+						let a = Math.random() * Math.PI * 2;
+
+						let r = Math.pow( Math.random(), 0.5 ) * range;
+
+						let xx = status_entity.for.x + ( status_entity.for._hitbox_x1 + status_entity.for._hitbox_x2 ) / 2 + Math.sin( a ) * r;
+						let yy = status_entity.for.y + ( status_entity.for._hitbox_y1 + status_entity.for._hitbox_y2 ) / 2 + Math.cos( a ) * r;
+
+						let ent = new sdEffect({ x: xx, y: yy, type:sdEffect.TYPE_VOID_FIRE, sx: 0, sy: -0.5 });
+						sdEntity.entities.push( ent );
+					}
+				}
+
+				if ( status_entity._ttl > 0 )
+				{
+					status_entity._ttl -= GSPEED;
+
+					if ( status_entity._ttl <= 0 ) status_entity.remove();
+				}
+			},
+
+			onBeforeRemove: ( status_entity )=>
+			{
+			}
+		};
+
+		sdStatusEffect.types[ sdStatusEffect.TYPE_ATTACK_INDICATOR = 13 ] = 
+		{
+			// Applied to the target instead of the attacker so that targeted players can see it even when the attacking entity is not visible
+
+			remove_if_for_removed: true,
+			is_emote: false,
+			
+			is_static: false,
+	
+			onMade: ( status_entity, params )=>
+			{
+				status_entity._attacker = params.attacker || null;
+
+				status_entity.ttl = params.ttl || 30;
+				status_entity.range = params.range || 10;
+				status_entity.sd_filter = ( params.color ? sdWorld.ReplaceColorInSDFilter_v2( sdWorld.CreateSDFilter(), '#ffffff', params.color ) : null );
+
+				status_entity.x2 = 0;
+				status_entity.y2 = 0;
+			},
+			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Cancel merge process
+			},
+			onStatusOfDifferentTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Do not stop merge process
+			},
+			IsVisible: ( status_entity, observer_entity )=>
+			{
+				return true;
+			},
+			onThink: ( status_entity, GSPEED )=>
+			{
+				if ( status_entity._attacker )
+				{
+					let ent = status_entity._attacker;
+
+					if ( ent._is_being_removed || ( ent.hea || ent._hea || 0 ) <= 0 || ent._frozen > 0 )
+					return true;
+
+					status_entity.x2 = status_entity._attacker.GetCenterX();
+					status_entity.y2 = status_entity._attacker.GetCenterY();
+				}
+				else
+				if ( sdWorld.is_server )
+				return true;
+
+				status_entity.ttl -= GSPEED;
+
+				return ( status_entity.ttl <= 0 );
+			},
+			onBeforeRemove: ( status_entity )=>
+			{
+			},
+			DrawFG: ( status_entity, ctx, attached )=>
+			{
+				if ( status_entity.sd_filter )
+				ctx.sd_filter = status_entity.sd_filter;
+
+				ctx.blend_mode = THREE.AdditiveBlending;
+
+				ctx.globalAlpha = ( status_entity.ttl < 30 && status_entity.ttl % 10 > 5 ) ? 0 : 0.5;
+
+				let range = status_entity.range;
+
+				let xx = status_entity.x;
+				let yy = status_entity.y;
+
+				let di = sdWorld.Dist2D( xx, yy, status_entity.x2, status_entity.y2 );
+
+				/*let point = sdWorld.TraceRayPoint( status_entity.x2, status_entity.y2, xx, yy, status_entity.for, null, sdCom.com_vision_blocking_classes );
+				if ( point )
+				{
+					xx = point.x;
+					yy = point.y;
+
+					range = sdWorld.Dist2D( xx, yy, status_entity.x2, status_entity.y2 );
+				}*/
+				
+				ctx.rotate( Math.atan2( status_entity.y2 - status_entity.y, status_entity.x2 - status_entity.x ) );
+				ctx.translate( di - range, 0 );
+
+				ctx.drawImageFilterCache( sdStatusEffect.img_attack_indicator_beam, range,-8, -range,16 );
+
+				ctx.sd_filter = null;
+				ctx.blend_mode = THREE.NormalBlending;
+				ctx.globalAlpha = 1;
 			}
 		};
 		
+		sdStatusEffect.types[ sdStatusEffect.TYPE_PSYCHOSIS = 14 ] = 
+		{
+			remove_if_for_removed: true,
+			is_emote: false,
+			
+			is_static: false,
+	
+			onMade: ( status_entity, params )=>
+			{
+				status_entity._next_spawn = 0;
+				status_entity._ttl = params.ttl;
+				status_entity._first_team = null;
+				status_entity._first_chat_color = null;
+				
+				status_entity._owner = params.owner || null;
+				status_entity._controllable = params.controllable || false;
+				
+				status_entity.visual = params.visual || false; // Ignore extra logic and only show blinking light sprite
+				
+				if ( status_entity.for )
+				if ( status_entity.for.is( sdWorld.entity_classes.sdCharacter ) )
+				{
+					status_entity._first_chat_color = status_entity.for._chat_color;
+					status_entity.for._chat_color = '#ff0000';
+					
+					if ( status_entity.visual ) return; // No need for AI logic
+					
+					if ( status_entity.for._ai_enabled )
+					{
+						status_entity._first_team = status_entity.for._ai_team; // Fix client-side errors
+					
+						status_entity.for._ai_team = 11; // Clones
+						
+						if ( status_entity._owner )
+						{
+							status_entity.for._ai_team = status_entity._owner._ai_team;
+							// Bad idea ahead
+							/*
+							status_entity.for.cc_id = status_entity._owner.cc_id;
+							status_entity.for._owner = status_entity._owner;
+							*/
+						}
+						
+						if ( status_entity.for._ai && status_entity.for._ai.target )
+						status_entity.for._ai.target = null; // Reset current target
+						
+						// console.log ( status_entity.for._ai_team, status_entity._first_team )
+					}
+				}
+			},
+			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				status_entity._ttl = params.ttl;
+				status_entity._update_version++;
+
+				return true; // Cancel merge process
+			},
+			onStatusOfDifferentTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Do not stop merge process
+			},
+			IsVisible: ( status_entity, observer_entity )=>
+			{
+				return true;
+			},
+			onThink: ( status_entity, GSPEED )=>
+			{
+				if ( status_entity._ttl > 0 )
+				{
+					status_entity._ttl -= GSPEED;
+
+					if ( status_entity._ttl <= 0 )
+					status_entity.remove();
+				}
+				if ( sdWorld.is_server )
+				if ( status_entity._controllable )
+				if ( status_entity._owner && status_entity._owner._key_states.GetKey( 'Mouse1' ) )
+				{
+					if ( status_entity.for )
+					if ( status_entity.for.is( sdWorld.entity_classes.sdCharacter ) )
+					if ( status_entity.for._ai_enabled )
+					{
+						if ( status_entity.for._ai && status_entity.for._ai.target )
+						status_entity.for._ai.target = null; // Reset current target before doing anything
+					
+						status_entity.for.look_x = status_entity._owner.look_x;
+						status_entity.for.look_y = status_entity._owner.look_y;
+						
+						if ( !status_entity._is_being_removed ) // Prevents infinite fire
+						status_entity.for._ai_force_fire = true;
+					}
+				}
+				else
+				status_entity.for._ai_force_fire = false;
+			
+				if ( status_entity.visual ) return;
+				
+				if ( !sdWorld.is_server || sdWorld.is_singleplayer )
+				{
+					let e = sdWorld.my_entity;
+					if ( status_entity.for !== e )
+					return;
+				
+					status_entity._next_spawn -= GSPEED;
+
+					if ( status_entity._next_spawn <= 0 )
+					{
+						status_entity._next_spawn = 75;
+
+						switch ( Math.round( Math.random() * 5 ) )
+						{	
+							case 1:
+							{
+								let ent1 = new sdEffect({ type: sdEffect.TYPE_LENS_FLARE, x:status_entity.for.x, y:status_entity.for.y - 32, sx:0, sy:10, scale:5, radius:1, color:'#FF0000' });
+							
+								let ent2 = new sdEffect({ type: sdEffect.TYPE_LENS_FLARE, x:status_entity.for.x - 8, y:status_entity.for.y - 48, sx:0, sy:10, scale:5, radius:1, color:'#FF0000' });
+							
+								let ent3 = new sdEffect({ type: sdEffect.TYPE_LENS_FLARE, x:status_entity.for.x + 8, y:status_entity.for.y - 48, sx:0, sy:10, scale:5, radius:1, color:'#FF0000' });
+								sdEntity.entities.push( ent1, ent2, ent3 );
+							
+								break;
+							}
+							case 2:
+							{
+								sdSound.PlaySound({ name: 'sd_death2', x:status_entity.x, y:status_entity.y, volume: 0.5, pitch: 0.5, _server_allowed: true });
+								break;
+							}
+							case 3:
+							{
+								sdSound.PlaySound({ name: 'zombie_alert2', x:status_entity.x, y:status_entity.y, volume: 1.5, pitch: 0.75 });
+								break;
+							}
+							case 4:
+							{
+								let ent = new sdEffect({ type: sdEffect.TYPE_LENS_FLARE, x:status_entity.for.x, y:status_entity.for.y - 32, sx:0, sy:-5, scale:5, radius:5, color:'#00FFFF' });
+								sdEntity.entities.push( ent );
+							
+								break;
+							}
+							default:
+							{
+								let t = sdWorld.AnyOf( [ 
+									'You will die. Stop delaying the inevitable. Give in and let it happen.',
+									'You do not belong here. Go away, this is not your world.',
+									'You can\'t run forever.',
+									'I can see you. You can\'t hide from me',
+									'Surrender to me. You will not get away this time.',
+									'Close your eyes. Embrace the eternal sleep.'
+								] );
+								
+								let chat_ent = new sdEffect ({
+									x:status_entity.for.x + ( Math.random() * 100  - Math.random() * 100 ), 
+									y:status_entity.for.y + ( Math.random() * 100  - Math.random() * 100 ), 
+									type:sdEffect.TYPE_CHAT,
+									text:t,
+									color: '#FF0000',
+									voice: { 
+										wordgap: 0,
+										pitch: 5,
+										speed: 50,
+										variant: 'klatt3',
+										voice: 'en'
+									}
+								});
+								
+								sdEntity.entities.push( chat_ent );
+								
+								break;
+							}
+						}
+					}
+				}
+			},
+
+			onBeforeRemove: ( status_entity )=>
+			{
+				if ( !sdWorld.is_server ) return;
+
+				if ( status_entity.for && !status_entity.for._is_being_removed )
+				{
+					status_entity.for._chat_color = status_entity._first_chat_color;
+					if ( status_entity.visual ) return;
+					
+					if ( status_entity.for._ai_enabled )
+					{
+						if ( status_entity._first_team !== null )
+						status_entity.for._ai_team = status_entity._first_team;
+					
+						if ( status_entity.for._ai && status_entity.for._ai.target )
+						status_entity.for._ai.target = null; // Reset current target
+					
+						status_entity.for._ai_force_fire = false;
+					}
+					// console.log ( status_entity.for._ai_team, status_entity._first_team )
+				}
+			},
+			DrawFG: ( status_entity, ctx, attached )=>
+			{
+				if ( !status_entity.for )
+				return;
+			
+				if ( status_entity.for.is( sdCharacter ) )
+				if ( status_entity.for._ragdoll )
+				if ( status_entity.for._ragdoll.head )
+				{
+					ctx.translate( status_entity.for._ragdoll.head.x - status_entity.x, status_entity.for._ragdoll.head.y - status_entity.y );
+				}
+				
+				ctx.blend_mode = THREE.AdditiveBlending;
+				ctx.globalAlpha = Math.sin( ( sdWorld.time % 1000 ) / 1000 * Math.PI );
+			
+				ctx.sd_color_mult_r = 1;
+				ctx.sd_color_mult_g = 0;
+				ctx.sd_color_mult_b = 0;
+		
+				ctx.drawImageFilterCache( sdStatusEffect.img_light, -32, -32, 64, 64 );
+				
+				/*
+				ctx.font = "6px Verdana";
+				ctx.textAlign = 'left';
+				ctx.fillStyle = '#ff0000';
+				ctx.fillText( status_entity._ttl, 16, 16 );
+				*/
+				
+				ctx.blend_mode = THREE.NormalBlending;
+				ctx.sd_color_mult_r = 1;
+				ctx.sd_color_mult_g = 1;
+				ctx.sd_color_mult_b = 1;
+				ctx.globalAlpha = 1;
+			}
+		};
+		
+		/*sdStatusEffect.types[ sdStatusEffect.TYPE_VOID_SHARD_EFFECT = 15 ] = 
+		{
+			remove_if_for_removed: true,
+	
+			is_emote: false,
+			
+			is_static: true,
+	
+			onMade: ( status_entity, params )=>
+			{
+				status_entity.t = params.t;
+			},
+			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				status_entity.t = params.t;
+				status_entity._update_version++;
+
+				return true; // Cancel merge process
+			},
+			onStatusOfDifferentTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Do not stop merge process
+			},
+			IsVisible: ( status_entity, observer_entity )=>
+			{
+				return status_entity.for.IsVisible( observer_entity );
+			},
+			onThink: ( status_entity, GSPEED )=>
+			{
+				status_entity.t -= GSPEED;
+				
+				if ( typeof status_entity.for.matter !== 'undefined' )
+				{
+					status_entity.for.matter = 0;
+				}
+				
+				if ( typeof status_entity.for._matter !== 'undefined' )
+				{
+					status_entity.for._matter = 0;
+				}
+				
+				return ( status_entity.t <= 0 ); // return true = delete
+			},
+			onBeforeEntityRender: ( status_entity, ctx, attached )=>
+			{
+				//ctx.filter = 'brightness(0)blur(2px)opacity(0.5)';
+				ctx.sd_status_effect_tint_filter = [ 0.3,0.3,0.3 ];
+			},
+			onAfterEntityRender: ( status_entity, ctx, attached )=>
+			{
+				//ctx.filter = 'none';
+				ctx.sd_status_effect_tint_filter = null;
+			}
+		};*/
+		
+		sdStatusEffect.types[ sdStatusEffect.TYPE_ASTEROID_WARNING = 16 ] = 
+		{
+			remove_if_for_removed: true,
+			is_emote: false,
+			
+			is_static: false,
+	
+			onMade: ( status_entity, params )=>
+			{
+				status_entity._asteroid = params.asteroid || null;
+
+				status_entity.x2 = 0;
+				status_entity.y2 = 0;
+			},
+			onStatusOfSameTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Cancel merge process
+			},
+			onStatusOfDifferentTypeApplied: ( status_entity, params )=> // status_entity is an existing status effect entity
+			{
+				return false; // Do not stop merge process
+			},
+			IsVisible: ( status_entity, observer_entity )=>
+			{
+				return true;
+			},
+			onThink: ( status_entity, GSPEED )=>
+			{
+				if ( sdWorld.is_server )
+				{
+					let ent = status_entity._asteroid;
+
+					let for_y = status_entity.for.y;
+
+					if ( ent && !ent._is_being_removed && !ent.landed )
+					{
+						status_entity.x2 = ent.x + ent.sx * Math.abs( ent.y - for_y ) / ent.sy;
+						status_entity.y2 = ent.y;
+					}
+					else
+					return true;
+				}
+
+				return false;
+			},
+			onBeforeRemove: ( status_entity )=>
+			{
+			},
+			DrawFG: ( status_entity, ctx, attached )=>
+			{
+				ctx.apply_shading = false;
+
+				let yy = sdWorld.camera.y - status_entity.for.y + 20 - sdRenderer.screen_height / sdWorld.camera.scale / 2;
+
+				if ( status_entity.y2 > sdWorld.my_entity.y - 100 )
+				ctx.globalAlpha = 0;
+				else
+				if ( status_entity.y2 > sdWorld.my_entity.y - 600 )
+				ctx.globalAlpha = ( 1 + Math.sin( ( ( sdWorld.time / 75 ) % 75 ) ) ) / 2;
+
+				ctx.translate( status_entity.x2 - status_entity.for.x, yy );
+
+				ctx.drawImageFilterCache( sdStatusEffect.img_warning, -16,-16, 32,32 );
+
+				ctx.globalAlpha = 1;
+			}
+		};
 
 		sdStatusEffect.status_effects = [];
 		
@@ -1650,6 +2254,8 @@ class sdStatusEffect extends sdEntity
 	{
 		super( params );
 		
+		//traceOnce( 'Status effect created at: ' + globalThis.getStackTrace() );
+		
 		this.type = params.type || 0;
 		let status_type = sdStatusEffect.types[ this.type ];
 		
@@ -1724,15 +2330,32 @@ class sdStatusEffect extends sdEntity
 		if ( status_type.onBeforeRemove )
 		status_type.onBeforeRemove( this );
 	
-		sdStatusEffect.status_effects.splice( sdStatusEffect.status_effects.indexOf( this ), 1 );
+		let id0 = sdStatusEffect.status_effects.indexOf( this );
+		if ( id0 !== -1 )
+		sdStatusEffect.status_effects.splice( id0, 1 );
+		else
+		debugger;
 		
 		if ( this._for_confirmed )
 		if ( this.for ) // Can be null if removed, which is fine
+		if ( !this.for._is_being_removed )
 		{
 			let arr = sdStatusEffect.entity_to_status_effects.get( this.for );
 			
-			arr.splice( arr.indexOf( this ), 1 );
-			arr.inversed.splice( arr.inversed.indexOf( this ), 1 );
+			if ( arr === undefined )
+			{
+				// Should not happen but for some reason happens sometimes, for example when big bases are moved fast enough diagonally
+			}
+			else
+			{
+				let id = arr.indexOf( this );
+				if ( id !== -1 ) // Happens on client side and even server-side after loading from snapshot...
+				arr.splice( id, 1 );
+
+				let id2 = arr.inversed.indexOf( this );
+				if ( id2 !== -1 ) // Happens on client side and even server-side after loading from snapshot...
+				arr.inversed.splice( id2, 1 );
+			}
 		}
 	}
 	IsTargetable( by_entity=null, ignore_safe_areas=false ) // Guns are not targetable when held, same for sdCharacters that are driving something

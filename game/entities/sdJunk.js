@@ -34,8 +34,9 @@ class sdJunk extends sdEntity
 		sdJunk.img_crystal_map_drainer_empty = sdWorld.CreateImageFromFile( 'crystal_cluster3_empty' ); // Sprite by HastySnow / LazyRain
 		sdJunk.img_crystal_map_drainer = sdWorld.CreateImageFromFile( 'crystal_cluster3' ); // Sprite by HastySnow / LazyRain
 
-		sdJunk.img_council_bomb = sdWorld.CreateImageFromFile( 'council_bomb' );
-		sdJunk.img_council_bomb2 = sdWorld.CreateImageFromFile( 'council_bomb2' );
+		//sdJunk.img_council_bomb = sdWorld.CreateImageFromFile( 'council_bomb' );
+		//sdJunk.img_council_bomb2 = sdWorld.CreateImageFromFile( 'council_bomb2' );
+		sdJunk.img_council_bomb3 = sdWorld.CreateImageFromFile( 'council_bomb3' );
 
 		sdJunk.img_erthal_beacon = sdWorld.CreateImageFromFile( 'erthal_distress_beacon2' );
 
@@ -43,9 +44,14 @@ class sdJunk extends sdEntity
 		sdJunk.img_matter_container2_empty = sdWorld.CreateImageFromFile( 'matter_container2_empty' );
 
 		sdJunk.img_freeze_barrel = sdWorld.CreateImageFromFile( 'barrel_freeze' );
+		sdJunk.img_fire_barrel = sdWorld.CreateImageFromFile( 'barrel_fire' );
+		
+		sdJunk.img_metal_chunk = sdWorld.CreateImageFromFile( 'metal_chunk' );
+		sdJunk.img_high_yield_rocket = sdWorld.CreateImageFromFile( 'high_yield_rocket' );
 
 		sdJunk.img_alien_artifact = sdWorld.CreateImageFromFile( 'artifact1' );
 		sdJunk.img_stealer_artifact = sdWorld.CreateImageFromFile( 'artifact2' );
+		sdJunk.img_unknown_object1 = sdWorld.CreateImageFromFile( 'unknown_object1' );
 
 		sdJunk.anti_crystals = 0;
 		sdJunk.council_bombs = 0;
@@ -61,6 +67,10 @@ class sdJunk extends sdEntity
 		sdJunk.TYPE_FREEZE_BARREL = 7;
 		sdJunk.TYPE_ALIEN_ARTIFACT = 8;
 		sdJunk.TYPE_STEALER_ARTIFACT = 9;
+		sdJunk.TYPE_FIRE_BARREL = 10;
+		sdJunk.TYPE_METAL_CHUNK = 11;
+		sdJunk.TYPE_HIGH_YIELD_ROCKET = 12;
+		sdJunk.TYPE_UNKNOWN_OBJECT = 13;
 		sdJunk.ScoreScaleByType = ( t )=>
 		{
 			if ( t === sdJunk.TYPE_ALIEN_ARTIFACT || t === sdJunk.TYPE_STEALER_ARTIFACT )
@@ -80,6 +90,9 @@ class sdJunk extends sdEntity
 		sdJunk.bounds_by_type[ sdJunk.TYPE_FREEZE_BARREL ] = { x1: -8, x2: 8, y1: -8, y2: 8 };
 		sdJunk.bounds_by_type[ sdJunk.TYPE_ALIEN_ARTIFACT ] = { x1: -3, x2: 3, y1: -3, y2: 3 };
 		sdJunk.bounds_by_type[ sdJunk.TYPE_STEALER_ARTIFACT ] = { x1: -3, x2: 3, y1: -3, y2: 3 };
+		sdJunk.bounds_by_type[ sdJunk.TYPE_FIRE_BARREL ] = { x1: -6, x2: 6, y1: -8, y2: 8 };
+		sdJunk.bounds_by_type[ sdJunk.TYPE_METAL_CHUNK ] = { x1: -7, x2: 7, y1: -8, y2: 8 };
+		sdJunk.bounds_by_type[ sdJunk.TYPE_HIGH_YIELD_ROCKET ] = { x1: -7, x2: 7, y1: -8, y2: 8 };
 	
 		sdWorld.entity_classes[ this.name ] = this; // Register for object spawn
 	}
@@ -104,18 +117,32 @@ class sdJunk extends sdEntity
 		this.sy = 0;
 		
 		this.regen_timeout = 0;
+		
+		this.held_by = null;
 
-		let r = Math.random();
+		let r = Math.random() * 8;
 		let t_s = 0;
 
-		if ( r < 0.25 )
+		if ( r < 1 )
 		t_s = sdJunk.TYPE_FREEZE_BARREL;
 		else
-		if ( r < 0.5 )
+		if ( r < 2 )
 		t_s = sdJunk.TYPE_LOST_CONTAINER;
 		else
-		if ( r < 0.75 )
+		if ( r < 3 )
 		t_s = sdJunk.TYPE_ALIEN_BATTERY;
+		else
+		if ( r < 4 )
+		t_s = sdJunk.TYPE_FIRE_BARREL;
+		else
+		if ( r < 5 )
+		t_s = sdJunk.TYPE_METAL_CHUNK;
+		else
+		if ( r < 6 )
+		t_s = sdJunk.TYPE_HIGH_YIELD_ROCKET;
+		else
+		if ( r < 7 )
+		t_s = sdJunk.TYPE_UNKNOWN_OBJECT;
 		else
 		t_s = sdJunk.TYPE_UNSTABLE_CUBE_CORPSE;
 
@@ -124,16 +151,16 @@ class sdJunk extends sdEntity
 		if ( this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER ) // Task reward matter container
 		this.hmax = 4000;
 		if ( this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON ) // Erthal distress beacon
-		this.hmax = 25000;
+		this.hmax = 10000;
 		if ( this.type === sdJunk.TYPE_COUNCIL_BOMB ) // Council bomb
-		this.hmax = 50000;
-		if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER ) // Large anti-crystal
+		this.hmax = 30000;
+		if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER || this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET ) // Large anti-crystal and the high yield rocket
 		this.hmax = 1000;
 		else
-		if ( this.type === sdJunk.TYPE_ALIEN_BATTERY || this.type === sdJunk.TYPE_LOST_CONTAINER || this.type === sdJunk.TYPE_FREEZE_BARREL ) // Current barrels ( 1 = Alien battery, 2 = Lost Particle Container, 7 = Freeze barrel )
+		if ( this.type === sdJunk.TYPE_ALIEN_BATTERY || this.type === sdJunk.TYPE_LOST_CONTAINER || this.type === sdJunk.TYPE_FREEZE_BARREL || this.type === sdJunk.TYPE_FIRE_BARREL || this.type === sdJunk.TYPE_METAL_CHUNK ) // Current barrels ( 1 = Alien battery, 2 = Lost Particle Container, 7 = Freeze barrel, 9 = Fire barrel )
 		this.hmax = 150;
 		else
-		if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE || this.type === sdJunk.TYPE_ALIEN_ARTIFACT || this.type === sdJunk.TYPE_STEALER_ARTIFACT )
+		if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE || this.type === sdJunk.TYPE_ALIEN_ARTIFACT || this.type === sdJunk.TYPE_STEALER_ARTIFACT || this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
 		this.hmax = 500;
 
 		// Variables for large anti-crystal
@@ -142,6 +169,7 @@ class sdJunk extends sdEntity
 		this._time_to_drain_more = 30 * 60 * 40; // 40 minutes, every 10 minutes it increases matter drain percentage
 		//this._time_to_drain_rtps = 30 * 60 * 30; // 30 minutes until it also starts draining matter from rescue teleporters
 		this._last_damage = 0; // Sound flood prevention
+		this._crystal_regen_rate_left = 50;
 
 		// Variables for Council bomb
 		this.glow_animation = 0; // Glow animation for the bomb
@@ -228,9 +256,9 @@ class sdJunk extends sdEntity
 			
 			let old_hea = this.hea + dmg;
 			
-			if ( Math.round( old_hea / ( this.hmax / 25 ) ) > Math.round( this.hea / ( this.hmax / 25 ) ) ) // Should spawn about 25 assault drones throughout the fight
+			if ( Math.round( old_hea / ( this.hmax / 15 ) ) > Math.round( this.hea / ( this.hmax / 15 ) ) ) // Should spawn about 15 assault drones throughout the fight
 			{
-				if ( initiator )
+				if ( initiator && ( sdWorld.Dist2D( initiator.x, initiator.y, this.x, this.y ) < 600 ) )
 				{
 					let drone = new sdDrone({ x:0, y:0 , type: 18});
 
@@ -410,7 +438,22 @@ class sdJunk extends sdEntity
 					damage_scale: 2 + ( 1 * ( this.matter / 90 ) ), // Weaker explosion if you drain it's matter before that, more lethal than regular cube explosion if it's matter is max
 					type:sdEffect.TYPE_EXPLOSION, 
 					owner:this,
-					color:'#33FFFF' 
+					color:'#33FFFF',
+					no_smoke: true,
+					shrapnel: true
+				});
+			}
+			if ( this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET ) // High radius explosion. Almost like a mini-nuke.
+			{
+				sdWorld.SendEffect({ 
+					x:this.x, 
+					y:this.y, 
+					radius:80,
+					damage_scale: 150,
+					type:sdEffect.TYPE_EXPLOSION, 
+					owner:this._owner,
+					can_hit_owner: true,
+					color:sdEffect.default_explosion_color
 				});
 			}
 			if ( this.type === sdJunk.TYPE_LOST_CONTAINER  ) // Cube yellow "barrels" use Lost affection, check code in case if I made a mistake somehow
@@ -430,7 +473,9 @@ class sdJunk extends sdEntity
 							damage_scale: 0, // Just a decoration effect
 							type:sdEffect.TYPE_EXPLOSION, 
 							owner:this,
-							color:'#ffff66' 
+							color:'#ffff66',
+							no_smoke: true,
+							shrapnel: true
 						});
 
 						let nears = sdWorld.GetAnythingNear( bullet.x, bullet.y, 48 );
@@ -477,52 +522,68 @@ class sdJunk extends sdEntity
 				let y = this.y;
 				//let sx = this.sx;
 				//let sy = this.sy;
+				
+				if ( this.type === sdJunk.TYPE_COUNCIL_BOMB )
+				{
+					sdSound.PlaySound({ name:'council_beacon_destruction', x:this.x, y:this.y, volume:4 });
+					
+					sdWorld.SendEffect({ 
+						x: this.x, 
+						y: this.y, 
+						radius: 200, 
+						damage_scale: 0, 
+						type: sdEffect.TYPE_EXPLOSION,
+						color:'#fff000',
+						no_smoke: true,
+						shrapnel: true
+					});
+				}
 
 				setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
 
-				let gun;
-				gun = new sdGun({ x:x, y:y, class:sdGun.CLASS_BUILDTOOL_UPG });
-				gun.extra = this.type === sdJunk.TYPE_COUNCIL_BOMB ? 2 : 1;
+					let gun;
+					gun = new sdGun({ x:x, y:y, class:sdGun.CLASS_BUILDTOOL_UPG });
+					gun.extra = this.type === sdJunk.TYPE_COUNCIL_BOMB ? 2 : 1;
 
-				//gun.sx = sx;
-				//gun.sy = sy;
-				sdEntity.entities.push( gun );
+					//gun.sx = sx;
+					//gun.sy = sy;
+					sdEntity.entities.push( gun );
 
 				}, 500 );
 				
 				if ( this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON && Math.random() < 0.25 ) // 25% chance for energy cell drop
 				setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
 
-				let gun2;
-				gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_ERTHAL_ENERGY_CELL });
+					let gun2;
+					gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_ERTHAL_ENERGY_CELL });
 
-				//gun.sx = sx;
-				//gun.sy = sy;
-				sdEntity.entities.push( gun2 );
+					//gun.sx = sx;
+					//gun.sy = sy;
+					sdEntity.entities.push( gun2 );
 
 				}, 500 );
 
 				if ( this.type === sdJunk.TYPE_COUNCIL_BOMB && Math.random() < 0.10 ) // 10% chance for Council Immolator
 				setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
 
-				let gun2;
-				gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_COUNCIL_IMMOLATOR });
+					let gun2;
+					gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_COUNCIL_IMMOLATOR });
 
-				//gun.sx = sx;
-				//gun.sy = sy;
-				sdEntity.entities.push( gun2 );
+					//gun.sx = sx;
+					//gun.sy = sy;
+					sdEntity.entities.push( gun2 );
 
 				}, 500 );
 				
-				if ( this.type === sdJunk.TYPE_COUNCIL_BOMB && Math.random() < 0.02 ) // 2% chance for Exalted core
+				if ( this.type === sdJunk.TYPE_COUNCIL_BOMB && Math.random() < 0.03 ) // 3% chance for Exalted core
 				setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
 
-				let gun2;
-				gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_EXALTED_CORE });
+					let gun2;
+					gun2 = new sdGun({ x:x, y:y, class:sdGun.CLASS_EXALTED_CORE });
 
-				//gun.sx = sx;
-				//gun.sy = sy;
-				sdEntity.entities.push( gun2 );
+					//gun.sx = sx;
+					//gun.sy = sy;
+					sdEntity.entities.push( gun2 );
 
 				}, 500 );
 			}
@@ -543,7 +604,9 @@ class sdJunk extends sdEntity
 						damage_scale: 0, // Just a decoration effect
 						type:sdEffect.TYPE_EXPLOSION, 
 						owner:this,
-						color:'#33FFFF' 
+						color:'#33FFFF',
+						smoke_color: '#33FFFF',
+						shrapnel: true
 					});
 
 					let nears = sdWorld.GetAnythingNear( bullet.x, bullet.y, 40 );
@@ -553,6 +616,38 @@ class sdJunk extends sdEntity
 						if ( nears[ i ].IsTargetable( this ) )
 						if ( nears[ i ]._is_bg_entity === this._is_bg_entity )
 						nears[ i ].ApplyStatusEffect({ type: sdStatusEffect.TYPE_TEMPERATURE, t: -250, initiator: this._owner }); // Freeze nearby objects
+					}
+				};
+				sdEntity.entities.push( bullet );
+			}
+			if ( this.type === sdJunk.TYPE_FIRE_BARREL ) // Fire "barrels" ignites stuff
+			{
+				let bullet = new sdBullet({ x: this.x, y: this.y });
+				bullet.model = 'ball_charged';
+				bullet._damage = 1;
+				bullet.owner = this;
+				bullet.time_left = 0; 
+				bullet._custom_detonation_logic = ( bullet )=>
+				{
+					sdWorld.SendEffect({ 
+						x:bullet.x, 
+						y:bullet.y, 
+						radius:30,
+						damage_scale: 0, // Just a decoration effect
+						type:sdEffect.TYPE_EXPLOSION, 
+						owner:this,
+						color:'#FFA840',
+						smoke_color: '#FFA840',
+						shrapnel: true
+					});
+
+					let nears = sdWorld.GetAnythingNear( bullet.x, bullet.y, 40 );
+
+					for ( let i = 0; i < nears.length; i++ )
+					{
+						if ( nears[ i ].IsTargetable( this ) )
+						if ( nears[ i ]._is_bg_entity === this._is_bg_entity )
+						nears[ i ].ApplyStatusEffect({ type: sdStatusEffect.TYPE_TEMPERATURE, t: 1000, initiator: this._owner }); // Ignite nearby objects
 					}
 				};
 				sdEntity.entities.push( bullet );
@@ -579,6 +674,28 @@ class sdJunk extends sdEntity
 
 				}, 500 );
 			}
+			
+			if ( this.type === sdJunk.TYPE_METAL_CHUNK ) // Metal chunk, drops 0-2 metal shards ( Maybe laser mining tools could make them drop more? )
+			{
+				r = Math.round( Math.random() * 2 );
+				for( let i = 0; i < r; i++ )
+				{
+					let x = this.x + Math.random() * 3 - Math.random() * 3;
+					let y = this.y + Math.random() * 3 - Math.random() * 3;
+					let sx = this.sx + Math.random() - Math.random();
+					let sy = this.sy + Math.random() - Math.random();
+
+					setTimeout(()=>{ // Hacky, without this gun does not appear to be pickable or interactable...
+
+						let gun;
+						gun = new sdGun({ x:x, y:y, class:sdGun.CLASS_METAL_SHARD });
+						gun.sx = sx;
+						gun.sy = sy;
+						sdEntity.entities.push( gun );
+
+					}, 500 );
+				}
+			}
 
 			this.remove();
 		}
@@ -592,25 +709,28 @@ class sdJunk extends sdEntity
 		
 	}
 	
-	get mass() { return this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER ? 60 : this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON ? 800 : this.type === sdJunk.TYPE_COUNCIL_BOMB ? 1000 : this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER ? 500 : 30; }
+	get mass() { return ( this.type === sdJunk.TYPE_METAL_CHUNK || this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET ) ? 90 : this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER ? 60 : this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON ? 800 : this.type === sdJunk.TYPE_COUNCIL_BOMB ? 1000 : this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER ? 500 : 30; }
 	Impulse( x, y )
 	{
+		if ( this.held_by )
+		return;
+	
 		this.sx += x / this.mass;
 		this.sy += y / this.mass;
 	}
-	/*Impact( vel ) // fall damage basically
+	getRequiredEntities( observer_character ) // Some static entities like sdCable do require connected entities to be synced or else pointers will never be resolved due to partial sync
 	{
-		// less fall damage
-		if ( vel > 10 )
-		{
-			this.DamageWithEffect( ( vel - 4 ) * 15 );
-		}
-	}*/
+		if ( this.held_by )
+		return [ this.held_by ]; 
+	
+		return [];
+	}
 	onThink( GSPEED ) // Class-specific, if needed
 	{
 		if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER )
 		GSPEED *= 0.25;
 
+		if ( !this.held_by )
 		this.sy += sdWorld.gravity * GSPEED;
 
 		if ( sdWorld.is_server )
@@ -621,6 +741,112 @@ class sdJunk extends sdEntity
 			}
 			if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE || ( this.type === sdJunk.TYPE_ALIEN_BATTERY && this.hea !== this.hmax ) || ( this.type === sdJunk.TYPE_LOST_CONTAINER && this.hea !== this.hmax ) )
 			this.Damage( GSPEED );
+		
+			if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT ) // Attacks everything in it's line of sight, relatively short range
+			{
+				this._time_to_drain -= GSPEED * ( 10 - 9 * this.hea / this.hmax );
+				this.glow_animation -= GSPEED * ( 10 - 9 * this.hea / this.hmax );
+				
+				let nears = null;
+				
+				let heal_sound_once = true;
+
+				while ( this._time_to_drain <= 0 )
+				{
+					if ( this._crystal_regen_rate_left > 0 )
+					{
+						//this.DamageWithEffect( 0.25 ); // Self damage, limited existence
+					}
+					else
+					this.DamageWithEffect( 25 ); // Self damage, limited existence
+				
+					//this._time_to_drain = Math.max( 5, 30 * 2 * ( this.hea / this.hmax ) );
+					
+					let no_crystals = true;
+					
+					this._time_to_drain += 30;
+					
+					if ( !nears )
+					{
+						nears = sdWorld.GetAnythingNearWithLOS( this.x, this.y, 32 );
+					}
+				
+					//let damaged_ents_set = new Set();
+					
+					for ( let i = 0; i < nears.length; i++ )
+					{
+						let ent = nears[ i ];
+						
+						if ( ent && ent !== this )
+						if ( ent.IsTargetable( this ) )
+						if ( ent._is_bg_entity === this._is_bg_entity )
+						{
+							//if ( !sdWorld.CheckLineOfSight( this.x + this._hitbox_x1 / 2 + this._hitbox_x2 / 2, this.y + this._hitbox_y1 / 2 + this._hitbox_y2 / 2, ent.x + ent._hitbox_x1 / 2 + ent._hitbox_x2 / 2, ent.y + ent._hitbox_y1 / 2 + ent._hitbox_y2 / 2, this ) )
+							//{
+								//if ( sdWorld.last_hit_entity )
+								//{
+									//if ( sdWorld.last_hit_entity === ent ) 
+									// Maybe it should damage whatever it line of sight touched since it is in it's radius anyway
+									/*let should_damage = true;
+									for ( let j = 0; j < damaged_ents.length; j++ ) // Check if ent was damaged before
+									if ( damaged_ents [ j ] === sdWorld.last_hit_entity )
+									{
+										should_damage = false;
+										break;
+									}
+								
+									if ( should_damage )*/
+									//if ( !damaged_ents_set.has( sdWorld.last_hit_entity ) )
+									//{
+										if ( ent.is( sdCrystal ) ) // Crystals have unique interaction - either get charged up or lose matter regen
+										{
+											let ent2 = ent;
+											// Essentially a 50/50 gamble for matter regen on crystals. Though it also scales how much it regenerates/loses depending on crystal max matter
+											
+											let mult = 5120 / ent2.matter_max;
+											
+											let regen = Math.min( 0.25, this._crystal_regen_rate_left );
+											
+											if ( ent2.matter_regen + regen * mult > ent2.max_matter_regen )
+											regen = ( ent2.max_matter_regen - ent2.matter_regen ) / mult;
+											
+											if ( ent.is_anticrystal )
+											regen = 0;
+											
+											if ( regen > 0 )
+											{
+												sdCrystal.Zap( this, ent2, '#7076e6' ); // Zap effect to show it's doing something
+												
+												ent2.matter_regen = Math.min( ent2.max_matter_regen, ent2.matter_regen + regen * mult );
+												this._crystal_regen_rate_left -= regen;
+
+												if ( heal_sound_once )
+												{
+													heal_sound_once = false;
+													sdSound.PlaySound({ name:'crystal_healer_ping', x:this.x, y:this.y, volume: 0.3 }); // Play once
+												
+													no_crystals = false;
+												}
+											}
+										}
+										else
+										ent.DamageWithEffect( 1, this ); // Other things should just get damaged without any effect so it seems a little supernatural
+										//
+										//damaged_ents.push( sdWorld.last_hit_entity ); // But not more than once
+										//damaged_ents_set.add( sdWorld.last_hit_entity )
+									//}
+								//}
+							//}
+						}
+					}
+					this.glow_animation = this._time_to_drain / 2;
+					
+					if ( no_crystals )
+					{
+						this.DamageWithEffect( 0.1 ); // Self damage, grants limited existence. Will also prevent it from digging into the ground indefinitely
+					}
+				}
+			}
 
 			if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER )
 			{
@@ -670,17 +896,27 @@ class sdJunk extends sdEntity
 								else
 								if ( di < 1200 )
 								di_mult = 0.9;
-
+						
 								if ( di < 1500 )
 								{
-									sdWorld.sockets[ i ].character.matter = sdWorld.sockets[ i ].character.matter * multiplier * di_mult;
+									let char = sdWorld.sockets[ i ].character;
+									
+									char.matter = char.matter * multiplier * di_mult;
+									
+									let c = '#000000';
+									
+									sdCrystal.Zap( this, char, c );
+									sdWorld.SendEffect({ x:this.x, y:this.y, type:sdEffect.TYPE_GLOW_HIT, color:c, scale:2, radius:10 });
+									sdWorld.SendEffect({ x:char.x, y:char.y, type:sdEffect.TYPE_GLOW_HIT, color:c, scale:2, radius:10 });
+
+									//sdSound.PlaySound({ name:'bsu_attack', x:sdWorld.sockets[ i ].character.x, y:sdWorld.sockets[ i ].character.y, volume:0.2, pitch:0.2 });
 									
 									sdTask.MakeSureCharacterHasTask({ 
 										similarity_hash:'DESTROY-'+this._net_id, 
 										executer: sdWorld.sockets[ i ].character,
 										target: this,
 										mission: sdTask.MISSION_DESTROY_ENTITY,
-										difficulty: 0.125 * sdTask.GetTaskDifficultyScaler(),
+										difficulty: 1 * sdTask.GetTaskDifficultyScaler(),
 										title: 'Destroy planetary matter drainer',
 										description: 'There is a planetary matter drainer spotted nearby. Destroy it before it drains all our matter!'
 									});
@@ -752,7 +988,7 @@ class sdJunk extends sdEntity
 								executer: sdWorld.sockets[ i ].character,
 								target: this,
 								mission: sdTask.MISSION_DESTROY_ENTITY,
-								difficulty: 0.334,
+								difficulty: 3 * sdTask.GetTaskDifficultyScaler(),
 								time_left: ( this.detonation_in - 30 * 2 ),
 								title: 'Disarm Council bomb',
 								description: 'Looks like Council paid us a visit and decided to bomb some parts of the planet. Stop them!'
@@ -768,12 +1004,13 @@ class sdJunk extends sdEntity
 					sdWorld.SendEffect({ 
 						x:this.x, 
 						y:this.y, 
-						radius:120, // run
-						damage_scale: 80,
+						radius:150, // run
+						damage_scale: 120,
 						type:sdEffect.TYPE_EXPLOSION, 
 						owner:this._owner,
 						can_hit_owner: true,
-						color:sdEffect.default_explosion_color
+						color:sdEffect.default_explosion_color,
+						shrapnel: true
 					});
 
 					// Spawn Council mecha worm as a punishment aswell
@@ -1077,7 +1314,7 @@ class sdJunk extends sdEntity
 							executer: sdWorld.sockets[ i ].character,
 							target: this,
 							mission: sdTask.MISSION_DESTROY_ENTITY,
-							difficulty: 0.167 * sdTask.GetTaskDifficultyScaler(),
+							difficulty: 1 * sdTask.GetTaskDifficultyScaler(),
 							title: 'Destroy Erthal distress beacon',
 							description: 'The Erthals have placed a distress beacon nearby and are rallying their troops! Destroy the beacon before they overflow the land!'
 						});
@@ -1088,11 +1325,11 @@ class sdJunk extends sdEntity
 				else
 				{
 					this._spawn_ent_in = this._spawn_ent_in_delay; // 30 seconds
-					this._spawn_ent_in_delay *= 1.1; // 1.25 seemed way too weak
+					this._spawn_ent_in_delay *= 1.03; // 1.25 seemed way too weak. And so did 1.1
 					sdWeather.only_instance.ExecuteEvent({
-						event: 11,
+						event: sdWeather.EVENT_ERTHALS,
 						near_entity: this,
-						group_radius: 3000
+						group_radius: ( Math.random() < 0.5 ) ? 400 : 3000
 					}); // Execute Erthal spawn event
 					
 					if ( this._spawn_ent_in_delay > 60 * 60 * 24 )
@@ -1138,7 +1375,7 @@ class sdJunk extends sdEntity
 										executer: sdWorld.sockets[ i ].character,
 										target: this,
 										mission: sdTask.MISSION_LRTP_EXTRACTION,
-										difficulty: 0.075 * sdTask.GetTaskDifficultyScaler(),
+										difficulty: 0.3 * sdTask.GetTaskDifficultyScaler(),
 										title: 'Extract alien artifact',
 										description: 'We would like to investigate this artifact you have found. Can you deliver it to the mothership using a long range teleporter?'
 									});
@@ -1148,53 +1385,121 @@ class sdJunk extends sdEntity
 				}
 			}
 		}
+		
+		if ( !this.held_by )
 		this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 	}
-	
-	DrawHUD( ctx, attached ) // foreground layer
+	get title()
 	{
 		if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE )
-		sdEntity.Tooltip( ctx, "Unstable cube corpse" );
+		return 'Unstable cube corpse';
 	
 		if ( this.type === sdJunk.TYPE_ALIEN_BATTERY )
-		sdEntity.Tooltip( ctx, "Alien battery" );
+		return 'Alien battery';
 	
 		if ( this.type === sdJunk.TYPE_LOST_CONTAINER )
-		sdEntity.Tooltip( ctx, "Lost particle container" );
+		return 'Lost particle container';
 	
 		if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER )
 		{
-			sdEntity.Tooltip( ctx, "Planetary matter drainer", 0, -8 );
+			return 'Planetary matter drainer';
+		}
+		if ( this.type === sdJunk.TYPE_COUNCIL_BOMB )
+		{
+			return 'Council bomb';
+		}
+		if ( this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON )
+		{
+			return 'Erthal distress beacon';
+		}
+
+		if ( this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER )
+		{
+			return 'Advanced matter container';
+		}
+
+		if ( this.type === sdJunk.TYPE_FREEZE_BARREL )
+		return 'Cryo-substance barrel';
+	
+		if ( this.type === sdJunk.TYPE_FIRE_BARREL )
+		return 'Flammable-substance barrel';
+
+		if ( this.type === sdJunk.TYPE_ALIEN_ARTIFACT || this.type === sdJunk.TYPE_STEALER_ARTIFACT )
+		return 'Strange artifact';
+	
+		if ( this.type === sdJunk.TYPE_METAL_CHUNK )
+		return 'Metal chunk';
+	
+		if ( this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET )
+		return 'High yield missile';
+	
+		if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
+		return '???';
+	
+		return 'Unknown entity';
+	}
+	DrawHUD( ctx, attached ) // foreground layer
+	{
+		if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_ALIEN_BATTERY )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_LOST_CONTAINER )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_PLANETARY_MATTER_DRAINER )
+		{
+			sdEntity.Tooltip( ctx, this.title, 0, -8 );
 			this.DrawHealthBar( ctx );
 		}
 		if ( this.type === sdJunk.TYPE_COUNCIL_BOMB )
 		{
-			sdEntity.TooltipUntranslated( ctx, T("Council bomb")+" (" + ~~( this.detonation_in / ( 30 * 60 ) ) + " minutes, "+  ~~ ~~( this.detonation_in % ( 30 * 60 ) / 30 ) + " seconds)", 0, -32 );
+			sdEntity.TooltipUntranslated( ctx, T( this.title )+" (" + ~~( this.detonation_in / ( 30 * 60 ) ) + " minutes, "+  ~~ ~~( this.detonation_in % ( 30 * 60 ) / 30 ) + " seconds)", 0, -32 );
 			this.DrawHealthBar( ctx );
 		}
 		if ( this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON )
 		{
-			sdEntity.Tooltip( ctx, "Erthal distress beacon", 0, -24 );
+			sdEntity.Tooltip( ctx, this.title, 0, -24 );
 			this.DrawHealthBar( ctx );
 		}
 
 		if ( this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER )
 		{
-			sdEntity.TooltipUntranslated( ctx, T("Advanced matter container") + " ( " + ~~(this.matter) + " / " + ~~(this.matter_max) + " )" );
+			sdEntity.TooltipUntranslated( ctx, T( this.title ) + " ( " + ~~(this.matter) + " / " + ~~(this.matter_max) + " )" );
 		}
 
-		if ( this.type === sdJunk.TYPE_FREEZE_BARREL )
-		sdEntity.Tooltip( ctx, "Cryo-substance barrel" );
+		if ( this.type === sdJunk.TYPE_FREEZE_BARREL || this.type === sdJunk.TYPE_FIRE_BARREL )
+		sdEntity.Tooltip( ctx, this.title );
 
 		if ( this.type === sdJunk.TYPE_ALIEN_ARTIFACT || this.type === sdJunk.TYPE_STEALER_ARTIFACT )
-		sdEntity.Tooltip( ctx, "Strange artifact" );
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_METAL_CHUNK )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
+		sdEntity.Tooltip( ctx, this.title );
+	
+		
+		this.BasicCarryTooltip( ctx, 8 );
 	}
 	Draw( ctx, attached )
 	{
 		if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE || this.type === sdJunk.TYPE_ALIEN_BATTERY || this.type === sdJunk.TYPE_LOST_CONTAINER || this.type === sdJunk.TYPE_COUNCIL_BOMB || this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON || this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER )
 		ctx.apply_shading = false;
-		//ctx.filter = this.filter;
 		
+		if ( !sdShop.isDrawing ) // Some subtle randomness atleast
+		{
+			let inversion = this._net_id % 2 === 0 ? 1 : -1;
+			ctx.scale( inversion, 1 );
+		}
+		
+		if ( this.held_by === null || attached )
 		{
 			if ( this.type === sdJunk.TYPE_UNSTABLE_CUBE_CORPSE ) // First unstable cube corpse
 			{
@@ -1236,24 +1541,35 @@ class sdJunk extends sdEntity
 			}
 			if ( this.type === sdJunk.TYPE_COUNCIL_BOMB ) // Council bomb
 			{
+				let frame = Math.min( 2, Math.floor( ( 1 - ( this.hea / this.hmax ) ) * 3 ) );
+				
+				ctx.drawImageFilterCache( sdJunk.img_council_bomb3, 0, frame*96, 64, 96, - 32, - 48, 64, 96 );
+				
 				if ( this.detonation_in % this._rate < this._rate / 2 )
 				{
-					ctx.drawImageFilterCache( sdJunk.img_council_bomb2, 0, 0, 64, 96, - 32, - 48, 64, 96 );
-					ctx.globalAlpha = Math.min( 1, this.glow_animation / 30 );
-					ctx.filter = ' drop-shadow(0px 0px 8px #FFF000)';
-					ctx.drawImageFilterCache( sdJunk.img_council_bomb2, 64, 0, 64, 96, - 32, - 48, 64, 96 );
+					ctx.drawImageFilterCache( sdJunk.img_council_bomb3, 64*2, frame*96, 64, 96, - 32, - 48, 64, 96 );
+				
+					//ctx.drawImageFilterCache( sdJunk.img_council_bomb2, 0, 0, 64, 96, - 32, - 48, 64, 96 );
+					//ctx.globalAlpha = Math.min( 1, this.glow_animation / 30 );
+					//ctx.filter = ' drop-shadow(0px 0px 8px #FFF000)';
+					//ctx.drawImageFilterCache( sdJunk.img_council_bomb2, 64, 0, 64, 96, - 32, - 48, 64, 96 );
+					
 				}
 				else
 				{
-					ctx.drawImageFilterCache( sdJunk.img_council_bomb, 0, 0, 64, 96, - 32, - 48, 64, 96 );
-					ctx.globalAlpha = Math.min( 1, this.glow_animation / 30 );
-					ctx.filter = ' drop-shadow(0px 0px 8px #FFF000)';
-					ctx.drawImageFilterCache( sdJunk.img_council_bomb, 64, 0, 64, 96, - 32, - 48, 64, 96 );
+					//ctx.drawImageFilterCache( sdJunk.img_council_bomb, 0, 0, 64, 96, - 32, - 48, 64, 96 );
+					//ctx.globalAlpha = Math.min( 1, this.glow_animation / 30 );
+					//ctx.filter = ' drop-shadow(0px 0px 8px #FFF000)';
+					//ctx.drawImageFilterCache( sdJunk.img_council_bomb, 64, 0, 64, 96, - 32, - 48, 64, 96 );
 				}
+				ctx.globalAlpha = Math.min( 1, this.glow_animation / 30 );
+				ctx.filter = 'drop-shadow(0px 0px 8px #FFF000) saturate( 0.25 )';
+				ctx.drawImageFilterCache( sdJunk.img_council_bomb3, 64*1, frame*96, 64, 96, - 32, - 48, 64, 96 );
 			}
 			if ( this.type === sdJunk.TYPE_ERTHAL_DISTRESS_BEACON ) // Erthal distress beacon
 			{
-				ctx.drawImageFilterCache( sdJunk.img_erthal_beacon, - 32, - 32, 64, 64 );
+				let frame = Math.min( 2, Math.floor( ( 1 - ( this.hea / this.hmax ) ) * 3 ) );
+				ctx.drawImageFilterCache( sdJunk.img_erthal_beacon, frame*64,0,64,64, - 32, - 32, 64, 64 );
 			}
 			if ( this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER ) // Task reward / Advanced matter container
 			{
@@ -1274,6 +1590,10 @@ class sdJunk extends sdEntity
 				//else
 				ctx.drawImageFilterCache( sdJunk.img_freeze_barrel, 0 + ( this.hea < this.hmax / 2 ? 32 : 0 ) , 0, 32, 32, - 16, - 16, 32, 32 );
 			}
+			if ( this.type === sdJunk.TYPE_FIRE_BARREL ) // Fire barrel
+			{
+				ctx.drawImageFilterCache( sdJunk.img_fire_barrel, 0 + ( this.hea < this.hmax / 2 ? 32 : 0 ) , 0, 32, 32, - 16, - 16, 32, 32 );
+			}
 			if ( this.type === sdJunk.TYPE_ALIEN_ARTIFACT ) // Alien / strange artifact from obelisk
 			{
 				ctx.drawImageFilterCache( sdJunk.img_alien_artifact, - 16, - 16, 32,32 );
@@ -1282,7 +1602,18 @@ class sdJunk extends sdEntity
 			{
 				ctx.drawImageFilterCache( sdJunk.img_stealer_artifact, - 16, - 16, 32,32 );
 			}
-
+			if ( this.type === sdJunk.TYPE_METAL_CHUNK ) // Metal chunk
+			{
+				ctx.drawImageFilterCache( sdJunk.img_metal_chunk, - 16, - 16, 32,32 );
+			}
+			if ( this.type === sdJunk.TYPE_HIGH_YIELD_ROCKET )
+			{
+				ctx.drawImageFilterCache( sdJunk.img_high_yield_rocket, - 16, - 16, 32,32 );
+			}
+			if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT ) // Unknown object
+			{
+				ctx.drawImageFilterCache( sdJunk.img_unknown_object1, 0 + ( this.glow_animation > 0 ? 32 : 0 ) , 0, 32, 32, - 16, - 16, 32, 32 );
+			}
 		}
 		ctx.globalAlpha = 1;
 		ctx.filter = 'none';
@@ -1308,6 +1639,17 @@ class sdJunk extends sdEntity
 			if ( this._broken )
 			sdWorld.BasicEntityBreakEffect( this, 30, 3, 0.75, 0.75 );
 		}
+		if ( this.type === sdJunk.TYPE_FREEZE_BARREL || this.type === sdJunk.TYPE_FIRE_BARREL )
+		{
+			if ( this._broken )
+			sdWorld.BasicEntityBreakEffect( this, 10, 12, 0.75, 0.75, 'glass12', sdEffect.TYPE_GLASS );
+		
+			if ( this.type === sdJunk.TYPE_FREEZE_BARREL )
+			sdWorld.BasicEntityBreakEffect( this, 10, 2, 0.75, 0.75, 'water_entrance', sdEffect.TYPE_FROZEN );
+		
+			if ( this.type === sdJunk.TYPE_FIRE_BARREL )
+			sdWorld.BasicEntityBreakEffect( this, 10, 2, 0.75, 0.75, 'fire_big', sdEffect.TYPE_FIRE );
+		}
 		if ( this.type === sdJunk.TYPE_ADVANCED_MATTER_CONTAINER )
 		{
 			if ( this._broken )
@@ -1321,6 +1663,19 @@ class sdJunk extends sdEntity
 				);
 
 				sdWorld.BasicEntityBreakEffect( this, 10 );
+			}
+		}
+		if ( this.type === sdJunk.TYPE_METAL_CHUNK || this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
+		{
+			if ( this._broken )
+			{
+				if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
+				sdWorld.BasicEntityBreakEffect( this, 10, 3, 1, 1, 'crystal_healer_death' );
+				else
+				sdWorld.BasicEntityBreakEffect( this, 10, 3, 0.75, 0.75 );
+				
+				//if ( this.type === sdJunk.TYPE_UNKNOWN_OBJECT )
+				//sdSound.PlaySound({ name:'crystal_healer_death', x:this.x, y:this.y, volume: 2 });
 			}
 		}
 	}

@@ -66,7 +66,8 @@ class sdEnemyMech extends sdEntity
 		
 		this._regen_timeout = 0;
 		
-		this._hmax = 15000; // Was 6000 but even 12000 is easy
+		//this._hmax = 15000; // Was 6000 but even 12000 is easy
+		this._hmax = 6000; // EG: It feels like a sponge boss unfortunately. Maybe it needs to become more complex mechanics-wise and much more rare in order to have high hitpoints. Meanwhile I'm raising his damage instead
 		this.hea = this._hmax;
 
 		this._ai_team = 5;
@@ -108,6 +109,7 @@ class sdEnemyMech extends sdEntity
 		this.lmg_an = 0; // Rotate angle for LMG firing
 		
 		this._last_seen_player = 0;
+		this._last_patience_warning = 0;
 
 		this.filter = 'hue-rotate(' + ~~( Math.random() * 360 ) + 'deg)';
 		
@@ -145,6 +147,7 @@ class sdEnemyMech extends sdEntity
 	static BossLikeTargetScan_Filter( e ) // Preventing dynamic function creation. Though maybe that isn't better than looking up global objects and properties
 	{
 		if ( sdCom.com_faction_attack_classes.indexOf( e.GetClass() ) !== -1 )
+		if ( ( e.hea || e._hea || 0 ) > 0 || e.is( sdCube ) )
 		{
 			let boss_entity = sdEnemyMech.current_boss;
 			
@@ -275,16 +278,6 @@ class sdEnemyMech extends sdEntity
 		// Also import sdBubbleShield if it's not imported
 		if ( sdBubbleShield.DidShieldProtectFromDamage( this, dmg, initiator ) )
 		return;
-	
-		if ( initiator )
-		{
-			if ( initiator.is( sdCharacter ) )
-			if ( initiator._ai_team === 0 ) // Only target players
-			this._current_target = initiator;
-
-			if ( !initiator.is( sdEnemyMech ) )
-			this._follow_target = initiator;
-		}
 
 
 
@@ -299,11 +292,14 @@ class sdEnemyMech extends sdEntity
 		
 		this.hea -= dmg;
 		
+		let hurt_sound = false;
+		
 		if ( this.hea > 0 )
 		{
 			if ( Math.ceil( this.hea / this._hmax * 10 ) !== Math.ceil( old_hp / this._hmax * 10 ) )
 			{
 				sdSound.PlaySound({ name:'enemy_mech_hurt', x:this.x, y:this.y, volume:3, pitch: 0.7 });
+				hurt_sound = true;
 			}
 			
 			if ( sdWorld.time > this._last_damage + 50 )
@@ -314,6 +310,30 @@ class sdEnemyMech extends sdEntity
 			
 			//if ( this.hea <= 400 )
 			//sdSound.PlaySound({ name:'hover_lowhp', x:this.x, y:this.y, volume:1 });
+		}
+	
+		if ( initiator )
+		{
+			if ( initiator.is( sdCharacter ) )
+			if ( initiator._ai_team !== this._ai_team ) // Only target non-teammates
+			{
+				if ( initiator._my_hash && initiator.build_tool_level < 10 && !hurt_sound )
+				{
+					// Do not attack new players back unless they deal enough damage to Mech
+					
+					if ( this._last_patience_warning < sdWorld.time - 1000 * 5 ) // Once per 5 seconds
+					{
+						sdSound.PlaySound({ name:'enemy_mech_warning', x:this.x, y:this.y, volume:2 });
+
+						this._last_patience_warning = sdWorld.time;
+					}
+				}
+				else
+				this._current_target = initiator;
+			}
+
+			if ( !initiator.is( sdEnemyMech ) )
+			this._follow_target = initiator;
 		}
 		
 		this._regen_timeout = Math.max( this._regen_timeout, 30 * 60 );
@@ -690,7 +710,10 @@ class sdEnemyMech extends sdEntity
 
 						//this.attack_anim = 15;
 
-						let an = Math.atan2( targets[ i ].y - this.y, targets[ i ].x - this.x ) + ( Math.random() * 2 - 1 ) * 0.05;
+						let an = Math.atan2( 
+								targets[ i ].y + ( targets[ i ]._hitbox_y1 + targets[ i ]._hitbox_y2 ) / 2 - this.y, 
+								targets[ i ].x + ( targets[ i ]._hitbox_x1 + targets[ i ]._hitbox_x2 ) / 2 - this.x 
+						) + ( Math.random() * 2 - 1 ) * 0.05;
 
 						this.lmg_an = an * 100;
 
@@ -709,7 +732,8 @@ class sdEnemyMech extends sdEntity
 
 						//bullet_obj._rail = true;
 
-						bullet_obj._damage = 25;
+						//bullet_obj._damage = 25;
+						bullet_obj._damage = 75;
 						bullet_obj.color = '#ffaa00';
 
 						sdEntity.entities.push( bullet_obj );
@@ -767,7 +791,10 @@ class sdEnemyMech extends sdEntity
 
 						this._rocket_attack_timer = 6;
 
-						let an = Math.atan2( targets[ i ].y - ( this.y + 16 ), targets[ i ].x - this.x ) + ( Math.random() * 2 - 1 ) * 0.1;
+						let an = Math.atan2( 
+								targets[ i ].y + ( targets[ i ]._hitbox_y1 + targets[ i ]._hitbox_y2 ) / 2 - this.y, 
+								targets[ i ].x + ( targets[ i ]._hitbox_x1 + targets[ i ]._hitbox_x2 ) / 2 - this.x 
+						) + ( Math.random() * 2 - 1 ) * 0.1;
 
 						let bullet_obj = new sdBullet({ x: this.x, y: this.y });
 						bullet_obj._owner = this;
@@ -850,6 +877,15 @@ class sdEnemyMech extends sdEntity
 		{
 			this._alert_intensity += GSPEED;
 		}
+		
+		if ( !sdWorld.is_server || sdWorld.is_singleplayer )
+		{
+			if ( this.hea < this._hmax / 5 )
+			{
+					let e = new sdEffect({ type: sdEffect.TYPE_SMOKE, x:this.x, y:this.y - 24, sx: -Math.random() + Math.random(), sy:-1 * Math.random() * 5, scale:1, radius:0.5, color:sdEffect.GetSmokeColor( sdEffect.smoke_colors ) });
+					sdEntity.entities.push( e );
+			}
+		}
 			
 		this.ApplyVelocityAndCollisions( GSPEED, 0, true );
 	}
@@ -881,8 +917,12 @@ class sdEnemyMech extends sdEntity
 
 		if ( this.hea > 0 )
 		{
-			ctx.globalAlpha = 0.5;
+			ctx.blend_mode = THREE.AdditiveBlending;
+			ctx.globalAlpha = Math.sin( ( sdWorld.time % 1000 ) / 1000 * Math.PI );
+
 			ctx.drawImageFilterCache( sdEnemyMech.img_glow, - 16 + this.hitbox_x2, - 16 + this.hitbox_y1 + 15, 32, 32 );
+
+			ctx.blend_mode = THREE.NormalBlending;
 			ctx.globalAlpha = 1;
 		}
 

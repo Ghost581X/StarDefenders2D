@@ -55,7 +55,7 @@ class sdFaceCrab extends sdEntity
 		this.sx = 0;
 		this.sy = 0;
 		
-		this._hmax = 60;
+		this._hmax = 70;
 	
 		this._hea = this._hmax;
 	
@@ -87,7 +87,7 @@ class sdFaceCrab extends sdEntity
 	{
 		if ( this.attached_to )
 		if ( by_entity )
-		if ( !this.attached_to.IsPlayerClass() || ( sdWorld.time % 5 > 0 ) ) // Decreased hit chance for players, no hit chance for creatures
+		if ( !this.attached_to.IsPlayerClass() || ( sdWorld.time % 2 > 0 ) ) // Decreased hit chance for players, no hit chance for creatures
 		{
 			if ( by_entity.is( sdBullet ) )
 			{
@@ -203,7 +203,7 @@ class sdFaceCrab extends sdEntity
 	}
 	onThink( GSPEED ) // Class-specific, if needed
 	{
-		let in_water = sdWorld.CheckWallExists( this.x, this.y, null, null, sdWater.water_class_array );
+		let in_water = sdWater.all_swimmers.has( this );
 		
 		if ( this.attached_to )
 		{
@@ -344,7 +344,8 @@ class sdFaceCrab extends sdEntity
 				}
 					
 				let xx = from_entity.x + ( from_entity._hitbox_x1 + from_entity._hitbox_x2 ) / 2;
-				let yy = from_entity.y + ( from_entity._hitbox_y1 + from_entity._hitbox_y2 ) / 2;
+				let yy = from_entity.y + from_entity._hitbox_y1;
+				//let yy = from_entity.y + ( from_entity._hitbox_y1 + from_entity._hitbox_y2 ) / 2;
 
 				if ( !from_entity.is( sdFaceCrab ) )
 				if ( from_entity === this._current_target || from_entity.IsPlayerClass() || ( from_entity.GetBleedEffect() === sdEffect.TYPE_BLOOD_GREEN || from_entity.GetBleedEffect() === sdEffect.TYPE_BLOOD ) )
@@ -353,6 +354,13 @@ class sdFaceCrab extends sdEntity
 				{
 					this._last_bite = sdWorld.time;
 					
+					let on_rtp = false;
+					
+					if ( from_entity.is( sdCharacter ) && from_entity.stands && from_entity._stands_on && from_entity._stands_on.is( sdRescueTeleport ) )
+					{
+						on_rtp = true;
+					}
+					else
 					from_entity.DamageWithEffect( 15, this );
 					
 					this._hea = Math.min( this._hmax, this._hea + ( 7 ) );
@@ -385,6 +393,15 @@ class sdFaceCrab extends sdEntity
 						{
 							if ( from_entity.is( sdCharacter ) )
 							{
+								if ( on_rtp )
+								{
+									from_entity.Say( [ 
+										'I have a face crab on my head',
+										'This thing followed me onto rescue teleport',
+										'I need to do something with that thing on my head'
+									][ ~~( Math.random() * 3 ) ] );
+								}
+								else
 								from_entity.Say( [ 
 									'Aaaaa it is on my face!',
 									'Aaaaa!',

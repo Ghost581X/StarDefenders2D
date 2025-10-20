@@ -83,7 +83,10 @@ class sdLongRangeAntenna extends sdEntity
 		
 		this._spawned_ai = false; // Spawn SD AI
 		
+		if ( sdWeather.only_instance )
 		this._event_to_spawn = sdWeather.only_instance._potential_invasion_events[ Math.floor( Math.random() * sdWeather.only_instance._potential_invasion_events.length ) ] || -1; // Random event which are usually invasions is selected.
+		else
+		this._event_to_spawn = -1; // Needed for singleplayer snapshot load
 		
 		//this.matter_max = 5500;
 		//this.matter = 100;
@@ -257,6 +260,9 @@ class sdLongRangeAntenna extends sdEntity
 											character_entity.remove();
 										}
 							
+										
+										if ( character_entity._is_being_removed )
+										clearInterval( logic, 1000 );
 									};
 									
 									setInterval( logic, 1000 );
@@ -300,7 +306,7 @@ class sdLongRangeAntenna extends sdEntity
 					mission: sdTask.MISSION_PROTECT_ENTITY,				
 					title: 'Protect long range frequency antenna',
 					description: desc,
-					difficulty: 0.075
+					difficulty: 0.2
 				});
 			}
 			this.has_players_nearby = false;
@@ -337,7 +343,7 @@ class sdLongRangeAntenna extends sdEntity
 				}
 			}
 			if ( this.has_players_nearby )
-			this.progress = Math.min( this.progress + 0.5, 100 );
+			this.progress = Math.min( this.progress + 1.5, 100 ); // 0.5 feels painfully slow
 		}
 		
 	}

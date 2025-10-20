@@ -79,7 +79,12 @@ class sdPresetEditor extends sdEntity
 	
 	IsVisible( observer_entity )
 	{
+		if ( observer_entity )
+		if ( observer_entity.IsPlayerClass() )
+		if ( observer_entity._god )
 		return true;
+
+		return false;
 	}
 	
 	get title()
@@ -510,12 +515,25 @@ class sdPresetEditor extends sdEntity
 		
 		*/
 		
+		const preset_data = sdPresetEditor.GetPresetData( preset_name );
+		
+		if ( !preset_data )
+		{
+			if ( sdWorld.is_singleplayer )
+			{
+				//debugger;
+				console.warn( 'Preset was not found in singleplayer mode (are presets even pre-laded there yet?): ' + preset_name );
+				return;
+			}
+		
+			throw new Error( 'Preset was not found: ' + preset_name );
+		}
+		
 		sdPresetEditor.active_async_preset_spawn_tasks++;
 		
 		if ( sdPresetEditor.active_async_preset_spawn_tasks > 10 )
-		throw new Error( 'Too many async preset spawn tasks - it may damage performacne' );
+		throw new Error( 'Too many async preset spawn tasks - it may damage performance' );
 		
-		const preset_data = sdPresetEditor.GetPresetData( preset_name );
 		
 		let snapshots = preset_data.snapshots;
 		
@@ -616,7 +634,7 @@ class sdPresetEditor extends sdEntity
 				if ( e.IsPlayerClass() || 
 					 ( e._shielded && !e._shielded._is_being_removed ) || 
 					 ( e.is( sdRescueTeleport ) && e.owner_biometry !== -1 ) ||
-					 !e.IsDamageAllowedByAdmins() ||
+					 e.IsInSafeArea() ||
 					 ( e.is( sdStorage ) && e._stored_items.length > 0 ) ||
 					 e.IsVehicle() ||
 					 e.is( sdBeacon ) )

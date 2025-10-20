@@ -13,9 +13,14 @@
 import sdWorld from '../sdWorld.js';
 import sdEntity from '../entities/sdEntity.js';
 import sdGun from '../entities/sdGun.js';
+import sdWeather from '../entities/sdWeather.js';
 import sdWater from '../entities/sdWater.js';
 import sdRescueTeleport from '../entities/sdRescueTeleport.js';
 import sdDeepSleep from '../entities/sdDeepSleep.js';
+import sdEffect from '../entities/sdEffect.js';
+import sdBloodDecal from '../entities/sdBloodDecal.js';
+import sdCrystal from '../entities/sdCrystal.js';
+import sdBeamProjector from '../entities/sdBeamProjector.js';
 
 //import { spawn } from 'child_process';
 let spawn = globalThis.child_process_spawn;
@@ -39,7 +44,7 @@ class sdModeration
 		
 		sdModeration.non_admin_commands = [ 'help', '?', 'commands', 'listadmins', 'selfpromote', 'connection', 'kill' ];
 		
-		sdModeration.admin_commands = [ 'commands', 'listadmins', 'announce', 'quit', 'restart', 'save', 'restore', 'fullreset', 'god', 'scale', 'admin', 'boundsmove', 'qs', 'quickstart', 'db', 'database', 'eval', 'password', 'logentitycount' ];
+		sdModeration.admin_commands = [ 'commands', 'listadmins', 'announce', 'quit', 'restart', 'save', 'restore', 'fullreset', 'god', 'scale', 'zoom', 'admin', 'boundsmove', 'worldresize', 'qs', 'quickstart', 'db', 'database', 'eval', 'password', 'logentitycount', 'chill', 'spawnevent', 'event' ];
 		
 		// Fake socket that can be passed instead of socket to force some commands from world logic
 		sdModeration.superuser_socket = {
@@ -133,36 +138,41 @@ class sdModeration
 		
 		if ( sdWorld.server_config.apply_censorship || sdWorld.server_config.apply_censorship === undefined )
 		{
-			//trace( 'Checking words', sdModeration.bad_words.length );
-			
-			let phrase_raw_lower_case = ' ' + ( phrase.toLowerCase ) + ' ';
-			phrase = ' ' + sdModeration.SpecialsReplaceWithLatin( phrase ) + ' ';
-
-			for ( let i = 0; i < sdModeration.bad_words.length; i++ )
+			if ( sdModeration.ever_loaded )
 			{
-				if ( phrase.indexOf( sdModeration.bad_words[ i ][ 0 ] ) !== -1 ||
-					 phrase_raw_lower_case.indexOf( sdModeration.bad_words[ i ][ 0 ] ) !== -1 )
+				//trace( 'Checking words', sdModeration.bad_words.length );
+
+				let phrase_raw_lower_case = ' ' + ( phrase.toLowerCase ) + ' ';
+				phrase = ' ' + sdModeration.SpecialsReplaceWithLatin( phrase ) + ' ';
+
+				for ( let i = 0; i < sdModeration.bad_words.length; i++ )
 				{
-					// Potentially tracking IPs and lowering reaction level would make sense against some obsessed people, hopefully there won't be any
-					
-					if ( sdModeration.bad_words[ i ][ 1 ] < 0.15 ) // In current implementation some words can be ignored since they can be mean but not exactly worthy censoring
+					if ( phrase.indexOf( sdModeration.bad_words[ i ][ 0 ] ) !== -1 ||
+						 phrase_raw_lower_case.indexOf( sdModeration.bad_words[ i ][ 0 ] ) !== -1 )
 					{
-						// Low tier phrases should prevent higher tier to react to them
-						phrase = phrase.split( sdModeration.bad_words[ i ][ 1 ] ).join( ' ' );
-						phrase_raw_lower_case = phrase_raw_lower_case.split( sdModeration.bad_words[ i ][ 1 ] ).join( ' ' );
-						//trace( 'Partially found', i, ' -- ', sdModeration.bad_words[ i ][ 0 ], ' -- ', sdModeration.bad_words[ i ][ 1 ] );
-					}
-					else
-					{
-						//trace( 'Found bad word' );
-						/*if ( coming_from_socket )
+						// Potentially tracking IPs and lowering reaction level would make sense against some obsessed people, hopefully there won't be any
+
+						if ( sdModeration.bad_words[ i ][ 1 ] < 0.15 ) // In current implementation some words can be ignored since they can be mean but not exactly worthy censoring
 						{
-							coming_from_socket.muted_until = sdWorld.time + ( sdWorld.server_config.censorship_mute_duration !== undefined ? sdWorld.server_config.censorship_mute_duration : 5000 );
-						}*/
-						return 1;
+							// Low tier phrases should prevent higher tier to react to them
+							phrase = phrase.split( sdModeration.bad_words[ i ][ 1 ] ).join( ' ' );
+							phrase_raw_lower_case = phrase_raw_lower_case.split( sdModeration.bad_words[ i ][ 1 ] ).join( ' ' );
+							//trace( 'Partially found', i, ' -- ', sdModeration.bad_words[ i ][ 0 ], ' -- ', sdModeration.bad_words[ i ][ 1 ] );
+						}
+						else
+						{
+							//trace( 'Found bad word' );
+							/*if ( coming_from_socket )
+							{
+								coming_from_socket.muted_until = sdWorld.time + ( sdWorld.server_config.censorship_mute_duration !== undefined ? sdWorld.server_config.censorship_mute_duration : 5000 );
+							}*/
+							return 1;
+						}
 					}
 				}
 			}
+			else
+			traceOnce( 'Unable to apply censorship test because IsPhraseBad call was before modertation state was loaded' );
 		}
 		//trace( 'It is fine' );
 		return 0;
@@ -601,12 +611,31 @@ class sdModeration
 			
 			sdModeration.Save();
 		}
+		/*else
+		if ( parts[ 0 ] === 'patch_overlap' )
+		{
+			let ops = 0;
+			
+			socket.SDServiceMessage( 'Server: Applying patch...' );
+			
+			setTimeout( ()=>{
+				
+				let t0 = Date.now();
+			
+				for ( let [ key, cell ] of sdWorld.world_hash_positions )
+				ops += sdDeepSleep.PatchOverlapInCell( cell );
+
+				socket.SDServiceMessage( 'Server: Patch applied ('+ops+' remove operations). Lookup took '+(Date.now()-t0)+' ms.' );
+			
+			}, 1000 );
+		
+		}*/
 		else
 		if ( parts[ 0 ] === 'god' )
 		{
 			if ( socket.character )
 			{
-				if ( parts[ 1 ] === '1' )
+				if ( parts[ 1 ] === '1' || parts[ 1 ] === '2' )
 				{
 					// Skip arrival sequence
 					if ( socket.character.driver_of )
@@ -616,6 +645,7 @@ class sdModeration
 					}
 					
 					socket.character._god = true;
+					socket.character._debug = ( parts[ 1 ] === '2' );
 					
 					if ( socket.character.GetClass() !== 'sdPlayerSpectator' )
 					{
@@ -630,6 +660,7 @@ class sdModeration
 
 						socket.character.InstallUpgrade( 'upgrade_jetpack' );
 						socket.character.InstallUpgrade( 'upgrade_hook' );
+						socket.character.InstallUpgrade( 'upgrade_hook' );
 						socket.character.InstallUpgrade( 'upgrade_invisibility' );
 						socket.character.InstallUpgrade( 'upgrade_grenades' );
 
@@ -642,7 +673,7 @@ class sdModeration
 						socket.character.InstallUpgrade( 'upgrade_stability_recovery' );
 					}
 					
-					socket.emit('SET sdWorld.my_entity._god', true );
+					socket.emit('SET sdWorld.my_entity._god', socket.character._god, socket.character._debug );
 				}
 				else
 				if ( parts[ 1 ] === '0' )
@@ -652,13 +683,114 @@ class sdModeration
 					//sdWorld.sockets[ i ].SDServiceMessage( socket.character.title + ' is no longer in "godmode".' );
 				
 					socket.character._god = false;
-					socket.emit('SET sdWorld.my_entity._god', false );
+					socket.character._debug = false;
+					socket.emit('SET sdWorld.my_entity._god', socket.character._god, socket.character._debug );
 				}
 				else
-				socket.SDServiceMessage( 'Type /god 1 or /god 0' );
+				socket.SDServiceMessage( 'Type /god 1 or /god 0 . You can use /god 2 to show sensor areas' );
 			}
 			else
 			socket.SDServiceMessage( 'Server: No active character.' );
+		}
+		else
+		if ( parts[ 0 ] === 'chill' || parts[ 0 ] === 'peace' || parts[ 0 ] === 'peaceful' || parts[ 0 ] === 'stopevents' || parts[ 0 ] === 'pauseevents' )
+		{
+			if ( parts[ 1 ] === '1' )
+			{
+				if ( sdWeather.only_instance._chill === parseInt( parts[ 1 ] ) )
+				{
+					socket.SDServiceMessage( 'Server: Events are already paused.' );
+				}
+				else
+				{
+					socket.SDServiceMessage( 'Server: Events have been paused and potential enemies removed.' );
+					sdWeather.only_instance._chill = parseInt( parts[ 1 ] );
+				}
+					
+				for ( let i = 0; i < sdEntity.active_entities.length; i++ )
+				{
+					let e = sdEntity.active_entities[ i ];
+
+					if ( e.IsPlayerClass() && e._my_hash )
+					continue;
+
+					if ( e.is( sdCrystal ) )
+					continue;
+
+					if ( e.is( sdBloodDecal ) )
+					{
+						e.remove();
+						e._broken = false;
+						continue;
+					}
+
+					if ( e._ai_team !== undefined )
+					if ( e._ai_team !== 0 || e.IsPlayerClass() && !e._my_hash )
+					{
+						e.remove();
+						e._broken = false;
+						continue;
+					}
+
+					if ( typeof e._current_target !== 'undefined' || typeof e._pathfinding !== 'undefined'  )
+					{
+						e.remove();
+						e._broken = false;
+						continue;
+					}
+
+					if ( e.GetBleedEffect() === sdEffect.TYPE_BLOOD_GREEN )
+					{
+						e.remove();
+						e._broken = false;
+						continue;
+					}
+				}
+			}
+			else
+			if ( parts[ 1 ] === '0' )
+			{
+				if ( sdWeather.only_instance._chill === parseInt( parts[ 1 ] ) )
+				{
+					socket.SDServiceMessage( 'Server: Events are already resumed.' );
+				}
+				else
+				{
+					socket.SDServiceMessage( 'Server: Events have been resumed.' );
+					sdWeather.only_instance._chill = parseInt( parts[ 1 ] );
+				}
+			}
+			else
+			socket.SDServiceMessage( 'Type /chill 1 or /chill 0' );
+		}
+		else
+		if ( parts[ 0 ] === 'spawnevent' || parts[ 0 ] === 'event' )
+		{
+			let num = parseInt( parts[ 1 ] );
+			
+			if ( !isNaN( num ) )
+			{
+				sdWeather.only_instance.SimpleExecuteEvent( num );
+				socket.SDServiceMessage( 'Event executed' );
+			}
+			else
+			{
+				let prefix = 'sdWeather.';
+				if ( parts[ 1 ].startsWith( prefix ) )
+				{
+					let property = parts[ 1 ].substring( prefix.length );
+					let value = sdWeather[ property ];
+					if ( typeof value === 'number' )
+					{
+						sdWeather.only_instance.SimpleExecuteEvent( value );
+						socket.SDServiceMessage( 'Event executed' );
+					}
+					else
+					socket.SDServiceMessage( 'Property "{1}" of object sdWeather is not a number', [ property ] );
+				}
+				else
+				socket.SDServiceMessage( 'Type /event then number of event to execute. For example, /event 8 or even /event sdWeather.EVENT_QUAKE' );
+			}
 		}
 		else
 		if ( parts[ 0 ] === 'remove' || parts[ 0 ] === 'break' )
@@ -694,6 +826,27 @@ class sdModeration
 				num = 1000;
 		
 				socket.character.s = num;
+			}
+		}
+		else
+		if ( parts[ 0 ] === 'zoom' )
+		{
+			if ( socket.character )
+			{
+				let num = parseFloat( parts[ 1 ] ) / 100;
+				
+				if ( isNaN( num ) )
+				num = 1;
+				else
+				if ( num < 0.1 )
+				num = 0.1;
+				else
+				if ( num > 10 )
+				num = 10;
+		
+				let old_zoom = socket.character.GetCameraZoom();
+				socket.character._additional_camera_zoom_mult = num;
+				socket.character.SetCameraZoom( old_zoom );
 			}
 		}
 		else
@@ -739,6 +892,40 @@ class sdModeration
 				sdWorld.ChangeWorldBounds( sdWorld.world_bounds.x1 + xx, sdWorld.world_bounds.y1 + yy, sdWorld.world_bounds.x2 + xx, sdWorld.world_bounds.y2 + yy );
 			
 				socket.SDServiceMessage( 'Server: Bounds changed. Current bounds: '+JSON.stringify( sdWorld.world_bounds ) );
+			}
+		}
+		else
+		if ( parts[ 0 ] === 'worldresize' )
+		{
+			let xx = Math.round( parts[ 2 ] / 32 ) * 32;
+			
+			if ( isNaN( xx ) || typeof xx !== 'number' || xx < -100000 || xx > 100000 )
+			socket.SDServiceMessage( 'Server: Value is out of range or not a number' );
+			else
+			{
+				let prop = null;
+				switch ( parts[ 1 ] )
+				{
+					case 'x1':
+					case 'y1':
+					case 'x2':
+					case 'y2':
+						prop = parts[ 1 ];
+
+						sdWorld.ChangeWorldBounds( 
+							sdWorld.world_bounds.x1 + ( ( prop === 'x1' ) ? xx : 0 ), 
+							sdWorld.world_bounds.y1 + ( ( prop === 'y1' ) ? xx : 0 ), 
+							sdWorld.world_bounds.x2 + ( ( prop === 'x2' ) ? xx : 0 ), 
+							sdWorld.world_bounds.y2 + ( ( prop === 'y2' ) ? xx : 0 ) 
+						);
+
+						socket.SDServiceMessage( 'Server: Bounds changed. Current bounds: '+JSON.stringify( sdWorld.world_bounds ) );
+						
+					break;
+
+					default: 
+						socket.SDServiceMessage( 'Server: Example: /worldresize x1 -256' );
+				}
 			}
 		}
 		else

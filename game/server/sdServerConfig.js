@@ -40,6 +40,13 @@ class sdServerConfigShort
 	static enable_bounds_move = true;
 	static aggressive_hibernation = true; // Offscreen groups of entities (sometimes whole bases) will be put to sleep until something tries to access these areas
 	
+	static enable_block_merging = false; // Experimental change, merges blocks into a single vertical column.
+	static enable_background_merging = false; // Experimental change, merges backgrounds into a single vertical column.
+	
+	static keep_favourite_weapon_on_death = false; // Teleports one weapon from a dead player into mothersip storage to be reclaimed.
+	
+	static forced_play_area = false; // Force a play/no oxygen area like in open world support, even without open worlds enabled. (open_world_max_distance coordinates)
+	
 	static apply_censorship = true; // Censorship file is not included
 	
 	static backup_interval_seconds = 60 * 30; // 30 minutes
@@ -66,45 +73,41 @@ class sdServerConfigFull extends sdServerConfigShort
 	static let_server_owner_run_eval_command = false; // Unsafe feature for server security in cases if admin account can end up being stolen. Lets first admin to run JavaScript commands on a server via /eval ...
 	static let_non_full_access_level_admins_save_presets = true; // These are saved into presets_users and can't override same files named same way but made by top level admin
 	
+	static run_patch_overlap = false;//( Date.now() < 1733960619202 + 1000 * 60 * 60 * 24 * 30 * 6 ); // Run overlap patch for 6 months. It runs on server startup and every time sdDeepSleep area is loaded from disk
+	
 	static offscreen_behavior = 'OFFSCREEN_BEHAVIOR_SIMULATE_X_STEPS_AT_ONCE'; // Or 'OFFSCREEN_BEHAVIOR_SIMULATE_PROPERLY' or 'OFFSCREEN_BEHAVIOR_SIMULATE_X_TIMES_SLOWER' or 'OFFSCREEN_BEHAVIOR_SIMULATE_X_STEPS_AT_ONCE'. We cheat a little bit offscreen as huge/dense worlds would have perforamnce issues otherwise
 	static offscreen_behavior_x_value = 30; // By how much slower or how many steps to do at once. Usually 30 can give 2x performance improvement in case of OFFSCREEN_BEHAVIOR_SIMULATE_X_STEPS_AT_ONCE. You can test if anything goes wrong offscreen by enabling debug_offscreen_behavior
 	static debug_offscreen_behavior = false; // If you want to see how everything moves offscreen - set this to true
 	static TestIfShouldForceProperSimulation( ent ) // Some entities must be synced accurately even if they are offscreen, for example crystals in amplifiers, sdSandWorm, sdQuadro
 	{
-		if ( ent.is( sdCrystal ) )
+		switch ( ent._class_id )
 		{
-			if ( ent.held_by && ent.held_by.is( sdMatterAmplifier ) )
-			return true;
+			case sdCrystal.class_id:
+			{
+				if ( ent.held_by && ent.held_by.is( sdMatterAmplifier ) )
+				return true;
+			}
+			break;
+			
+			case sdSandWorm.class_id: // These get too unstable without it
+			{
+				if ( sdWorld.offscreen_behavior === sdWorld.OFFSCREEN_BEHAVIOR_SIMULATE_X_STEPS_AT_ONCE )
+				if ( ( ent.towards_tail && !ent.towards_tail._is_being_removed ) || ( ent.towards_head && !ent.towards_head._is_being_removed ) )
+				if ( ent._phys_sleep > 0 )
+				return true;
+			}
+			break;
+			
+			default:
+			{
+				if ( ent.onThink.has_MatterGlow || ent.onThink.has_GiveLiquid )
+				if ( sdCable.connected_entities_per_entity.has( ent ) )
+				return true;
+				
+				return false;
+			}
+			break;
 		}
-		else
-		//if ( ent.is( sdCube ) || ent.is( sdHover ) || ent.is( sdMatterContainer ) || ent.is( sdSunPanel ) )
-		if ( ent.onThink.has_MatterGlow )
-		{
-			if ( sdCable.connected_entities_per_entity.has( ent ) )
-			return true;
-		}
-		else
-		if ( ent.onThink.has_GiveLiquid )
-		{
-			if ( sdCable.connected_entities_per_entity.has( ent ) )
-			return true;
-		}
-		else
-		if ( ent.is( sdSandWorm ) )
-		{
-			if ( ( ent.towards_tail && !ent.towards_tail._is_being_removed ) || ( ent.towards_head && !ent.towards_head._is_being_removed ) )
-			if ( ent._phys_sleep > 0 )
-			return true;
-		}
-		/*else
-		if ( ent.is( sdQuadro ) )
-		{
-			if ( ent.w1 || ent.w2 || ent.p )
-			if ( ent._phys_sleep > 0 )
-			return true;
-		}*/
-		else
-		return false;
 	}
 	
 	static base_degradation = true; // False will disable roach attacks, BSU value decrease, flesh corruption removing protection off blocks
@@ -117,7 +120,7 @@ class sdServerConfigFull extends sdServerConfigShort
 	
 	
 	static allowed_base_shielding_unit_types = null; // [ sdBaseShieldingUnit.TYPE_CRYSTAL_CONSUMER, sdBaseShieldingUnit.TYPE_MATTER, sdBaseShieldingUnit.TYPE_SCORE_TIMED, sdBaseShieldingUnit.TYPE_DAMAGE_PERCENTAGE ] to allow specific ones or null to allow all
-	static allow_private_storage = true; // These are accesible via LRTPs. Setting this to false will make database reject acceess, not server itself (set allow_private_storage_access to false if you wan to disable private storate on specific servers only)
+	static allow_private_storage = true; // These are accesible via LRTPs. Setting this to false will make database reject access, not server itself (set allow_private_storage_access to false if you want to disable private storate on specific servers only)
 	static allow_rescue_teleports = true;
 	static allowed_rescue_teleports = null; // [ sdRescueTeleport.TYPE_INFINITE_RANGE, sdRescueTeleport.TYPE_SHORT_RANGE, sdRescueTeleport.TYPE_CLONER, sdRescueTeleport.TYPE_RESPAWN_POINT ]
 	static allow_private_storage_access = true; // These are accesible via LRTPs. This disables private storage only on this server. If this server is uses as database - other servers will still be able to access privage storage unless allow_private_storage is set to false
@@ -341,7 +344,7 @@ class sdServerConfigFull extends sdServerConfigShort
 		
 		
 		// Spawn starter items based off what player wants to spawn with
-		let guns = [ sdGun.CLASS_BUILD_TOOL, sdGun.CLASS_MEDIKIT, sdGun.CLASS_CABLE_TOOL, sdGun.CLASS_PISTOL ];
+		let guns = [ sdGun.CLASS_BUILD_TOOL, sdGun.CLASS_MEDIKIT, sdGun.CLASS_CABLE_TOOL, sdGun.CLASS_PISTOL, sdGun.CLASS_ARMOR_STARTER ];
 		
 		if ( player_settings.start_with1 )
 		guns.unshift( sdGun.CLASS_SWORD );
@@ -481,15 +484,35 @@ class sdServerConfigFull extends sdServerConfigShort
 			let intro_offset = 0;
 			let intro_to_speak = [];
 
-			switch ( ~~( Math.random() * 4 ) )
+			switch ( ~~( Math.random() * 6 ) )
 			{
 				case 0: intro_to_speak.push( 'Welcome to Star Defenders!' ); break;
 				case 1: intro_to_speak.push( 'Welcome to Star Defenders, [' + character_entity.title + ']!' ); break;
 				case 2: intro_to_speak.push( 'Hi.' ); break;
-				case 3: intro_to_speak.push( 'Hello.' ); break;
+				case 3: intro_to_speak.push( 'Hi, [' + character_entity.title + ']!' ); break;
+				case 4: intro_to_speak.push( 'Hello.' ); break;
+				case 5: intro_to_speak.push( 'Nice to see you, [' + character_entity.title + ']!' ); break;
+				case 6: intro_to_speak.push( 'Glad you\'ve decided to join the expedition, [' + character_entity.title + '].' ); break;
 			}
 			
-			switch ( ~~( Math.random() * 16 ) ) // There should eventually be an sdContextMenu option for instructors and move the messages titled 'guides' there as options so players can learn about game mechanics and have the instructor mention that they can open ContextMenu on him to acccess the guides here instead along with basic quotes. - Ghost581
+			// Let's go with less text for a while. Telling players about rescue teleports is way too confusing. Move extra replies to sdCharacter.RegisterTalkIfNear
+			intro_to_speak.push( ...[
+					'Press B key to open build menu.',
+					'You can drag objects with grappling hook.',
+					'Once you\'ve got grappling hook upgrade - press C key or press Mouse Wheel to drag items.',
+					'Look for crystals to get Matter. Matter is a primary resource here.',
+					'Press Enter to talk to other players.'
+			] );
+				
+			switch ( ~~( Math.random() * 4 ) )
+			{
+				case 0: intro_to_speak.push( 'Best of luck to you.' ); break;
+				case 1: intro_to_speak.push( 'I\'ll stick around for a bit.' ); break;
+				case 2: intro_to_speak.push( 'And that concludes my intro speech.' ); break;
+				case 3: intro_to_speak.push( 'I hope I didn\'t miss anything.' ); break;
+			}
+			
+			/*switch ( ~~( Math.random() * 16 ) ) // There should eventually be an sdContextMenu option for instructors and move the messages titled 'guides' there as options so players can learn about game mechanics and have the instructor mention that they can open ContextMenu on him to acccess the guides here instead along with basic quotes. - Ghost581
 			{
 				
 				case 0: intro_to_speak.push( ...[
@@ -675,7 +698,7 @@ class sdServerConfigFull extends sdServerConfigShort
 					'Oh, and they can also press and hold V to give their own matter to Players and Objects.',
 					'Cool, huh?'
 				] ); break;
-			}
+			}*/
 				
 			let my_character_entity = character_entity;
 			
@@ -774,11 +797,14 @@ class sdServerConfigFull extends sdServerConfigShort
 				{
 					clearInterval( instructor_interval );
 					
-					sdWorld.SendEffect({ x:instructor_entity.x + (instructor_entity.hitbox_x1+instructor_entity.hitbox_x2)/2, y:instructor_entity.y + (instructor_entity.hitbox_y1+instructor_entity.hitbox_y2)/2, type:sdEffect.TYPE_TELEPORT });
-					
-					sdSound.PlaySound({ name:'teleport', x:instructor_entity.x, y:instructor_entity.y, volume:0.5 });
-						
-					instructor_entity.remove();
+					if ( !instructor_entity._is_being_removed )
+					{
+						sdWorld.SendEffect({ x:instructor_entity.x + (instructor_entity.hitbox_x1+instructor_entity.hitbox_x2)/2, y:instructor_entity.y + (instructor_entity.hitbox_y1+instructor_entity.hitbox_y2)/2, type:sdEffect.TYPE_TELEPORT });
+
+						sdSound.PlaySound({ name:'teleport', x:instructor_entity.x, y:instructor_entity.y, volume:0.5 });
+
+						instructor_entity.remove();
+					}
 				}
 				
 			}, 5500 );
@@ -1189,6 +1215,76 @@ class sdServerConfigFull extends sdServerConfigShort
 			}
 
 		}, world_edge_think_rate );
+		
+		// Merge unmerged blocks if server config option is enabled
+		if ( sdWorld.server_config.enable_block_merging )
+		{
+			console.log( 'Running block merging patch...' );
+			for ( let i = 0; i < sdEntity.entities.length; i++ )
+			{
+				let ent = sdEntity.entities[ i ];
+				if ( ent.is( sdBlock ) )
+				{
+					//console.log( i +',' +  sdEntity.entities.length );
+					if ( ent._merged === false && ent.SupportsMerging() )
+					{
+						ent._hea = ent._hmax - 0.1;
+						ent.SetHiberState( sdEntity.HIBERSTATE_ACTIVE ); // Does not attempt merge without this
+					}
+				}
+			}
+		}
+		else
+		{
+			// Unmerge previously merged blocks
+			//console.log( 'Running block unmerging patch...' );
+			for ( let i = 0; i < sdEntity.entities.length; i++ )
+			{
+				let ent = sdEntity.entities[ i ];
+				if ( ent.is( sdBlock ) )
+				{
+					//console.log( i +',' +  sdEntity.entities.length );
+					if ( ent._merged )
+					{
+						ent.UnmergeBlocks();
+					}
+				}
+			}
+		}
+		if ( sdWorld.server_config.enable_background_merging )
+		{
+			console.log( 'Running background merging patch...' );
+			for ( let i = 0; i < sdEntity.entities.length; i++ )
+			{
+				let ent = sdEntity.entities[ i ];
+				if ( ent.is( sdBG ) )
+				{
+					//console.log( i +',' +  sdEntity.entities.length );
+					if ( ent._merged === false && ent.SupportsMerging() )
+					{
+						ent._regen_timeout = 1;
+						ent.SetHiberState( sdEntity.HIBERSTATE_ACTIVE ); // Does not attempt merge without this
+					}
+				}
+			}
+		}
+		else
+		{
+			// Unmerge previously merged backgrounds
+			//console.log( 'Running background unmerging patch...' );
+			for ( let i = 0; i < sdEntity.entities.length; i++ )
+			{
+				let ent = sdEntity.entities[ i ];
+				if ( ent.is( sdBG ) )
+				{
+					//console.log( i +',' +  sdEntity.entities.length );
+					if ( ent._merged )
+					{
+						ent.UnmergeBackgrounds();
+					}
+				}
+			}
+		}
 	}
 	static PlayerSpawnPointSeeker( character_entity, socket )
 	{
@@ -1291,13 +1387,34 @@ class sdServerConfigFull extends sdServerConfigShort
 				break;
 			}
 			
+			
+			let lrtp_nearby = false;
+			for ( let i = 0; i < sdLongRangeTeleport.long_range_teleports.length; i++ )
+			{
+				let s = sdLongRangeTeleport.long_range_teleports[ i ];
+
+				if ( s.is_server_teleport )
+				if ( sdWorld.inDist2D_Boolean( x, y, s.x, s.y, sdBaseShieldingUnit.protect_distance ) )
+				{
+					lrtp_nearby = true;
+					break;
+				}
+			}
+			
 			let bsu_nearby = false;
+			if ( !lrtp_nearby )
 			for ( let i = 0; i < sdBaseShieldingUnit.all_shield_units.length; i++ )
 			{
 				let e = sdBaseShieldingUnit.all_shield_units[ i ];
 				if ( e.enabled )
 				if ( sdWorld.inDist2D_Boolean( x, y, e.x, e.y, sdBaseShieldingUnit.protect_distance ) )
 				{
+					if ( e.type === sdBaseShieldingUnit.TYPE_DAMAGE_PERCENTAGE && e.MeasureProtectionPercentage() < 0.9 )
+					{
+						// Ignore these
+						continue;
+					}
+					
 					bsu_nearby = true;
 					break;
 				}
@@ -1380,11 +1497,20 @@ class sdServerConfigFull extends sdServerConfigShort
 			tr++;
 			if ( tr > max_tr )
 			{
-				character_entity.x = x;
-				character_entity.y = y;
+				//character_entity.x = x;
+				//character_entity.y = y;
 				
-				//character_entity.x = 0;
-				//character_entity.y = -128;
+				// Otherwise just spawn in the center and damage items in there
+				character_entity.x = x;
+				character_entity.y = y1 + 64;
+				
+				let ents = sdWorld.GetAnythingNear( character_entity.x, character_entity.y, 64 );
+				for ( let i = 0; i < ents.length; i++ )
+				{
+					if ( ents[ i ]._shielded )
+					ents[ i ].remove();
+				}
+				
 				break;
 			}
 		} while( true );
@@ -1424,14 +1550,17 @@ class sdServerConfigFull extends sdServerConfigShort
 	{
 		let sockets = sdWorld.sockets;
 		sdWorld.leaders.length = 0;
-
+		
 		for ( let i2 = 0; i2 < sockets.length; i2++ )
 		if ( 
 				sockets[ i2 ].character && 
 				( !sdWorld.server_config.only_admins_can_spectate || !sockets[ i2 ].character.is( sdPlayerSpectator ) ) && 
 				!sockets[ i2 ].character._is_being_removed 
 		)
-		sdWorld.leaders.push({ name:sockets[ i2 ].character.title, name_censored:sockets[ i2 ].character.title_censored, score:sockets[ i2 ].GetScore(), here:1 });
+		if ( sockets[ i2 ].character._list_online )
+		{
+			sdWorld.leaders.push({ name:sockets[ i2 ].character.title, name_censored:sockets[ i2 ].character.title_censored, score:sockets[ i2 ].GetScore(), here:1 });
+		}
 	}
 	static ModifyTerrainEntity( ent, icy ) // ent can be sdBlock or sdBG
 	{
@@ -1508,8 +1637,9 @@ class sdServerConfigFull extends sdServerConfigShort
 					// This is done because some variable-size entities might end up having wrong hash areas occupied after reboot, for example sdArea. Possibly due to _hiberstate being not really set since it already had final target value
 					if ( ent )
 					if ( !ent._is_being_removed )
+					if ( !ent.is( sdWeather ) )
 					{
-						if ( ent._affected_hash_arrays.length > 0 ) // Easier than checking for hiberstates
+						//if ( ent._affected_hash_arrays.length > 0 ) // Easier than checking for hiberstates // Disabled this just to find out what is causing objects inside of other objects
 						sdWorld.UpdateHashPosition( ent, false, false );
 					}
 				}
@@ -1521,6 +1651,13 @@ class sdServerConfigFull extends sdServerConfigShort
 
 			sdWorld.SolveUnresolvedEntityPointers();
 			sdWorld.unresolved_entity_pointers = null;
+			
+			if ( sdWorld.server_config.run_patch_overlap )
+			{
+				console.log( 'Running overlap patch...' );
+				for ( let [ key, cell ] of sdWorld.world_hash_positions )
+				sdDeepSleep.PatchOverlapInCell( cell );
+			}
 
 			console.log('Continuing from where we\'ve stopped (snapshot decoded)!');
 			//fs.writeFile( 'sd2d_server_started_here.v', 'Continuing from where we\'ve stopped (snapshot decoded)!', ( err )=>{} );
@@ -1548,7 +1685,21 @@ class sdServerConfigFull extends sdServerConfigShort
 				return Math.ceil( v ).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 			}
 
-			console.log('Snapshot save started... Memory usage :: Current: ' + RoundThousandSpaces( ( os.totalmem() - os.freemem() ) / (1024 * 1024) ) + ' Mb / Total: ' + RoundThousandSpaces( os.totalmem() / (1024 * 1024) ) + ' Mb / Available: ' + RoundThousandSpaces( os.freemem() / (1024 * 1024) ) + ' Mb / Entities: ' + sdEntity.entities.length + ' / Active entities: ' + sdEntity.active_entities.length + ' / entities_by_net_id_cache_map: ' + sdEntity.entities_by_net_id_cache_map.size + ' / removed_entities_info: ' + sdEntity.removed_entities_info.size + ' / sockets: ' + sdWorld.sockets.length );
+			console.log('Snapshot save started... Memory usage :: Current: ' + RoundThousandSpaces( ( os.totalmem() - os.freemem() ) / (1024 * 1024) ) + ' Mb / '+
+					'Total: ' + RoundThousandSpaces( os.totalmem() / (1024 * 1024) ) + ' Mb / '+
+					'Available: ' + RoundThousandSpaces( os.freemem() / (1024 * 1024) ) + ' Mb / '+
+					'Entities: ' + sdEntity.entities.length + ' / '+
+					'Active entities: ' + sdEntity.active_entities.length + ' / '+
+					'entities_by_net_id_cache_map: ' + sdEntity.entities_by_net_id_cache_map.size + ' / '+
+					'removed_entities_info: ' + sdEntity.removed_entities_info.size + ' / '+
+					'sdPathFinding.rect_space_maps: ' + sdPathFinding.rect_space_maps.length + ' / '+
+					'world_hash_positions: ' + sdWorld.world_hash_positions.size + ' / '+
+					'recent_built_item_net_ids_by_hash: ' + sdWorld.recent_built_item_net_ids_by_hash.size + ' / '+
+					'status_effects: ' + sdStatusEffect.status_effects.length + ' / '+
+					'tasks: ' + sdTask.tasks.length + ' / '+
+					'global_entities: ' + sdEntity.global_entities.length + ' / '+
+					'sockets: ' + sdWorld.sockets.length 
+			);
 
 			let start_time = Date.now();
 
@@ -1807,25 +1958,25 @@ class sdServerConfigFull extends sdServerConfigShort
 		};
 
 		setInterval( ()=>{
-
 			if ( sdWorld.world_has_unsaved_changes )
-			if ( !sdWorld.paused )
+			if ( !sdWorld.paused || !sdWorld.is_singleplayer )
 			{
 				sdWorld.world_has_unsaved_changes = false;
 
 				for ( var i = 0; i < sdWorld.sockets.length; i++ )
-				sdWorld.sockets[ i ].SDServiceMessage( 'Server: Backup is being done!' );
-
-				SaveSnapshot( sdWorld.snapshot_path_const, ( err )=>
-				{
+				sdWorld.sockets[ i ].SDServiceMessage( 'Server: Backup will be initiated in 1 minute' );
+				setTimeout(()=>{
 					for ( var i = 0; i < sdWorld.sockets.length; i++ )
-					sdWorld.sockets[ i ].SDServiceMessage( 'Server: Backup is complete ('+(err?'Error!':'successfully')+')!' );
-				});
+					sdWorld.sockets[ i ].SDServiceMessage( 'Server: Backup is being done!' );
+
+					SaveSnapshot( sdWorld.snapshot_path_const, ( err )=>
+					{
+						for ( var i = 0; i < sdWorld.sockets.length; i++ )
+						sdWorld.sockets[ i ].SDServiceMessage( 'Server: Backup is complete ('+(err?'Error!':'successfully')+')!' );
+					});
+				}, 1000 * 60 );
 			}
-
 		}, 1000 * sdWorld.server_config.backup_interval_seconds ); // Once per 30 minutes
-
-
 
 		/*setInterval( ()=>{
 
